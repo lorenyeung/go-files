@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 )
 
 // StorageJSON api/storage call
@@ -61,20 +62,25 @@ func main() {
 			var data = GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey)
 			json.Unmarshal([]byte(data), &result2)
 			fmt.Println("Found the following files under" + url + "/" + repo + "/" + download + "/\nNumber\tLast Modified\tSize\tPath")
+			var wg sync.WaitGroup //multi threading fun
+			wg.Add(len(result2.Children))
 			for i := 0; i < len(result2.Children); i++ {
-				//need to deal with index out of range
-				//fmt.Println("data:" + result2.Children[i].URI)
-				var result3 FileStorageJSON
-				var data2 = GetRestAPI(url+"/api/storage/"+repo+"/"+download+result2.Children[i].URI, username, apiKey)
-				json.Unmarshal([]byte(data2), &result3)
+				go func(i int) {
+					defer wg.Done()
+					var result3 FileStorageJSON
+					var data2 = GetRestAPI(url+"/api/storage/"+repo+"/"+download+result2.Children[i].URI, username, apiKey)
+					json.Unmarshal([]byte(data2), &result3)
 
-				size, err := strconv.ParseInt(result3.Size, 10, 64)
-				if err != nil {
-					fmt.Printf("%d is not of type %T", size, size)
-					os.Exit(127)
-				}
-				fmt.Printf("%d\t%s\t%s\t%s\n", i+1, result3.LastModified, ByteCountDecimal(size), result3.Path)
+					size, err := strconv.ParseInt(result3.Size, 10, 64)
+					if err != nil {
+						fmt.Printf("%d is not of type %T", size, size)
+						os.Exit(127)
+					}
+					fmt.Printf("%d\t%s\t%s\t%s\n", i+1, result3.LastModified, ByteCountDecimal(size), result3.Path)
+				}(i)
 			}
+
+			wg.Wait()
 		}
 	}
 }
