@@ -3,8 +3,10 @@ package rest
 import (
 	"bufio"
 	"encoding/json"
+	"files/auth"
+	"files/helpers"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -14,44 +16,13 @@ import (
 	"time"
 )
 
-//FileStorageJSON file details call
-type FileStorageJSON struct {
-	LastModified  string `json:"lastModified"`
-	ConvertedTime time.Time
-	Size          string `json:"size"`
-	DownloadURI   string `json:"downloadUri"`
-}
-
-// StorageJSON file list call
-type StorageJSON struct {
-	Children []struct {
-		URI    string `json:"uri"`
-		Folder string `json:"folder"`
-	} `json:"children"`
-}
-
-//TimeSlice sorted data structure
-type TimeSlice []FileStorageJSON
-
-func (p TimeSlice) Len() int {
-	return len(p)
-}
-
-func (p TimeSlice) Less(i, j int) bool {
-	return p[i].ConvertedTime.Before(p[j].ConvertedTime)
-}
-
-func (p TimeSlice) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-
 //GetFilesDetails get file details, sort by date and print
-func GetFilesDetails(username, apiKey, url, repo, download string) TimeSlice {
+func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeSlice {
 
 	//create map of all file details from list of files
-	var unsorted = make(map[int]FileStorageJSON)
-	var filesList StorageJSON
-	var data = GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey)
+	var unsorted = make(map[int]helpers.FileStorageJSON)
+	var filesList helpers.StorageJSON
+	var data = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey)
 	json.Unmarshal([]byte(data), &filesList)
 	for len(filesList.Children) == 0 {
 		fmt.Println("No files found under " + url + "/" + repo + "/" + download + "/. Enter again, or type n to quit:")
@@ -61,75 +32,96 @@ func GetFilesDetails(username, apiKey, url, repo, download string) TimeSlice {
 		if download == "n" {
 			os.Exit(0)
 		}
-		data = GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey)
+		data = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey)
 		json.Unmarshal([]byte(data), &filesList)
 	}
 	fmt.Println("Found the following files under " + url + "/" + repo + "/" + download + "/\nNumber\tLast Modified\t\tSize\tPath")
-
-	var wg sync.WaitGroup //multi threading the GET details request. currently not concurrent write safe
+	var mutex = &sync.Mutex{} //should help with the concurrent map writes issue
+	var wg sync.WaitGroup     //multi threading the GET details request
 	wg.Add(len(filesList.Children))
 	for i := 0; i < len(filesList.Children); i++ {
 		go func(i int) {
 			defer wg.Done()
-			var fileDetail FileStorageJSON
-			var data2 = GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey)
+			var fileDetail helpers.FileStorageJSON
+			var data2 = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey)
 			json.Unmarshal([]byte(data2), &fileDetail)
 			time, _ := time.Parse(time.RFC3339, fileDetail.LastModified)
-			unsorted[i+1] = FileStorageJSON{fileDetail.LastModified, time, fileDetail.Size, fileDetail.DownloadURI}
+			mutex.Lock()
+			unsorted[i+1] = helpers.FileStorageJSON{
+				LastModified:  fileDetail.LastModified,
+				ConvertedTime: time,
+				Size:          fileDetail.Size,
+				DownloadURI:   fileDetail.DownloadURI,
+			}
+			mutex.Unlock()
 		}(i)
 	}
 	wg.Wait()
 
 	//get unsorted data and sort it
-	sorted := make(TimeSlice, 0, len(unsorted))
+	sorted := make(helpers.TimeSlice, 0, len(unsorted))
 	for _, d := range unsorted {
 		sorted = append(sorted, d)
 	}
 	sort.Sort(sorted)
-	printSorted(sorted, url, repo, download)
+	helpers.PrintSorted(sorted, url, repo, download)
 	return sorted
 }
 
-//PrintSorted print data in human readable format
-func printSorted(sorted TimeSlice, url, repo, download string) {
-	for key, value := range sorted {
-		size, err := strconv.ParseInt(value.Size, 10, 64)
-		if err != nil {
-			fmt.Printf("%d is not of type %T", size, size)
-			os.Exit(127)
-		}
-		fmt.Printf("%d\t%s\t%s\t%s\n", key+1, value.ConvertedTime.Format("2006-01-02 15:04:05"), ByteCountDecimal(size), strings.TrimPrefix(value.DownloadURI, url+"/"+repo+"/"+download+"/"))
-	}
-}
+//DownloadFiles download files selected
+func DownloadFiles(sorted helpers.TimeSlice, creds auth.Creds) {
+	sortedSize := len(sorted)
+	fmt.Println("Which files do you wish to download? Please separate each number by a space:")
+	reader := bufio.NewReader(os.Stdin)
+	downloadIn, _ := reader.ReadString('\n')
+	download := strings.TrimSuffix(downloadIn, "\n")
 
-//GetRestAPI GET rest APIs response with error handling
-func GetRestAPI(url string, username string, apiKey string) []byte {
-	client := http.Client{}
-	req2, err := http.NewRequest("GET", url, nil)
-	req2.SetBasicAuth(username, apiKey)
-	if err != nil {
-		fmt.Printf("The HTTP request failed with error %s\n", err)
+	//need number check
+	words := strings.Fields(download)
+	if strings.HasPrefix(download, "0 ") || download == "0" || strings.HasSuffix(download, " 0") || strings.Contains(download, " 0 ") {
+		words = nil
+		for i := 0; i < sortedSize; i++ {
+			t := strconv.Itoa(i + 1)
+			words = append(words, t)
+		}
+	}
+	path := strings.TrimPrefix(sorted[0].DownloadURI, creds.URL+"/"+creds.Repository+"/")
+	path = path[:strings.IndexByte(path, '/')]
+	relativePath := creds.DlLocation + "/" + path
+	if _, err := os.Stat(relativePath); os.IsNotExist(err) {
+		fmt.Printf("%s does not exist\n", relativePath)
+
 	} else {
-		resp, err := client.Do(req2)
-		if err != nil {
-			fmt.Printf("The HTTP response failed with error %s\n", err)
-		}
-		data, _ := ioutil.ReadAll(resp.Body)
-		return data
+		fmt.Printf("%s exists, running checksum validation\n", relativePath)
 	}
-	return nil
+
+	for key := range words {
+		size := helpers.StringToInt64(words[key])
+		if size > int64(sortedSize) || size < 1 {
+			fmt.Printf("Out of bounds number %d, skipping", size)
+			continue
+		}
+		fmt.Printf("downloading %s %s\n", words[key], sorted[size-1].DownloadURI)
+	}
 }
 
-//ByteCountDecimal convert bytes to human readable data size
-func ByteCountDecimal(b int64) string {
-	const unit = 1000
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
+func DownloadFile(filepath string, url string) error {
+
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
 	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
+	defer resp.Body.Close()
+
+	// Create the file
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
 	}
-	return fmt.Sprintf("%.1f%cB", float64(b)/float64(div), "kMGTPE"[exp])
+	defer out.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
