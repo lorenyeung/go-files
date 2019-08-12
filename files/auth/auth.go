@@ -85,7 +85,10 @@ func GenerateDownloadJSON(configPath string, regen bool) Creds {
 	if repoInput == "" {
 		repoInput = creds.Repository
 	}
+	return writeFileDownloadJSON(configPath, urlInput, userName, apiKey, dlLocationInput, repoInput)
+}
 
+func writeFileDownloadJSON(configPath, urlInput, userName, apiKey, dlLocationInput, repoInput string) Creds {
 	data := Creds{
 		URL:        urlInput,
 		Username:   userName,
@@ -93,13 +96,15 @@ func GenerateDownloadJSON(configPath string, regen bool) Creds {
 		DlLocation: dlLocationInput,
 		Repository: repoInput,
 	}
+	//should probably encrypt data here
 	fileData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("The JSON write failed with error %s\n", err)
+		log.Panicf("The JSON form failed with error %s\n", err)
+
 	}
 	err2 := ioutil.WriteFile(configPath, fileData, 0600)
 	if err2 != nil {
-		log.Printf("%s\n", err2)
+		log.Panicf("The JSON write failed with error %s\n", err2)
 	}
 	return data
 }
@@ -113,6 +118,7 @@ func GetDownloadJSON(fileLocation string) Creds {
 		log.Print("error:", err)
 		resultData = GenerateDownloadJSON(fileLocation, false)
 	} else {
+		//should decrypt here
 		defer file.Close()
 		byteValue, _ := ioutil.ReadAll(file)
 		json.Unmarshal([]byte(byteValue), &result)

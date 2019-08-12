@@ -138,5 +138,4 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
 		log.Printf("Successfully finished downloading %s\n", sorted[size-1].DownloadURI)
 	}
 	log.Println("all requested files downloaded. Safe travels!")
-	//TODO regenerate API key here
 }
