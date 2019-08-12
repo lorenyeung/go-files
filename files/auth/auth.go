@@ -2,6 +2,11 @@ package auth
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"files/helpers"
 	"fmt"
@@ -24,63 +29,79 @@ type Creds struct {
 
 // VerifyAPIKey for errors
 func VerifyAPIKey(urlInput, userName, apiKey string) bool {
-	log.Print("starting VerifyAPIkey request")
-	fmt.Println("Testing " + userName)
+	log.Printf("starting VerifyAPIkey request. Testing: %s\n", userName)
 	data := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "")
 	if string(data) == "OK" {
-		fmt.Println("Credentials are good to go.")
-		log.Print("finished VerifyAPIkey request")
+		log.Print("finished VerifyAPIkey request. Credentials are good to go.")
 		return true
 	}
-	fmt.Println(string(data))
-	log.Print("finished VerifyAPIkey request")
+	log.Printf("finished VerifyAPIkey request: %s\n", string(data))
 	return false
 }
 
 // GenerateDownloadJSON (re)generate download JSON. Tested.
-func GenerateDownloadJSON() {
+func GenerateDownloadJSON(configPath string, regen bool) Creds {
+	var creds Creds
 	//TODO optionally read in existing files in case of updated creds/url
+	if regen {
+		creds = GetDownloadJSON(configPath)
+	}
 	var urlInput, userName, apiKey string
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter your url: ")
+	fmt.Printf("Enter your url [%s]: ", creds.URL)
 	for {
 		urlInput, _ = reader.ReadString('\n')
 		urlInput = strings.TrimSuffix(urlInput, "\n")
-		fmt.Print("Enter your username: ")
+		if urlInput == "" {
+			urlInput = creds.URL
+		}
+		fmt.Printf("Enter your username [%s]: ", creds.Username)
 		userName, _ = reader.ReadString('\n')
 		userName = strings.TrimSuffix(userName, "\n")
+		if userName == "" {
+			userName = creds.Username
+		}
 		fmt.Print("Enter your API key: ")
 		apiKey, _ = reader.ReadString('\n')
 		apiKey = strings.TrimSuffix(apiKey, "\n")
-		if VerifyAPIKey(urlInput+"/api/system/ping", userName, apiKey) {
+		if VerifyAPIKey(urlInput, userName, apiKey) {
 			break
 		} else {
 			fmt.Print("Something seems wrong, please try again. Enter your url: ")
 		}
 	}
-	fmt.Println("username:" + userName)
 	//TODO need to check if directory exists and/or valid directory. trim trailing /
-	fmt.Print("Enter your Download location: ")
+	fmt.Printf("Enter your Download location [%s]: ", creds.DlLocation)
 	dlLocationInput, _ := reader.ReadString('\n')
 	dlLocationInput = strings.TrimSuffix(dlLocationInput, "\n")
+	if dlLocationInput == "" {
+		dlLocationInput = creds.DlLocation
+	}
 
 	//TODO need to check if repo exists. trim trailing /
-	fmt.Print("Enter your repository: ")
+	fmt.Printf("Enter your repository [%s]: ", creds.Repository)
 	repoInput, _ := reader.ReadString('\n')
 	repoInput = strings.TrimSuffix(repoInput, "\n")
+	if repoInput == "" {
+		repoInput = creds.Repository
+	}
 
-	data := &Creds{
+	data := Creds{
 		URL:        urlInput,
 		Username:   userName,
 		Apikey:     apiKey,
 		DlLocation: dlLocationInput,
 		Repository: repoInput,
 	}
-	file, err := json.Marshal(data)
+	fileData, err := json.Marshal(data)
 	if err != nil {
-		fmt.Printf("The JSON write failed with error %s\n", err)
+		log.Printf("The JSON write failed with error %s\n", err)
 	}
-	_ = ioutil.WriteFile(dlLocationInput+"/.conf/download.json", file, 0600)
+	err2 := ioutil.WriteFile(configPath, fileData, 0600)
+	if err2 != nil {
+		log.Printf("%s\n", err2)
+	}
+	return data
 }
 
 //GetDownloadJSON get data from DownloadJSON
@@ -89,7 +110,8 @@ func GetDownloadJSON(fileLocation string) Creds {
 	var resultData Creds
 	file, err := os.Open(fileLocation)
 	if err != nil {
-		log.Fatal("error:", err)
+		log.Print("error:", err)
+		resultData = GenerateDownloadJSON(fileLocation, false)
 	} else {
 		defer file.Close()
 		byteValue, _ := ioutil.ReadAll(file)
@@ -149,4 +171,43 @@ func GetRestAPI(urlInput, userName, apiKey, filepath string) []byte {
 		}
 	}
 	return nil
+}
+
+func CreateHash(key string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(key))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func Encrypt(data []byte, passphrase string) []byte {
+	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		panic(err.Error())
+	}
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	return ciphertext
+}
+
+func Decrypt(data []byte, passphrase string) []byte {
+	key := []byte(CreateHash(passphrase))
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err.Error())
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+	nonceSize := gcm.NonceSize()
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		panic(err.Error())
+	}
+	return plaintext
 }

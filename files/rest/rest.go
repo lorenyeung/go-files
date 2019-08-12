@@ -137,4 +137,6 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
 		auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName)
 		log.Printf("Successfully finished downloading %s\n", sorted[size-1].DownloadURI)
 	}
+	log.Println("all requested files downloaded. Safe travels!")
+	//TODO regenerate API key here
 }
