@@ -1,7 +1,11 @@
 package helpers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +18,9 @@ type FileStorageJSON struct {
 	ConvertedTime time.Time
 	Size          string `json:"size"`
 	DownloadURI   string `json:"downloadUri"`
+	Checksums     struct {
+		Sha256 string `json:"sha256"`
+	} `json:"checksums"`
 }
 
 // StorageJSON file list call
@@ -68,4 +75,59 @@ func PrintSorted(sorted TimeSlice, url, repo, download string) {
 	for key, value := range sorted {
 		fmt.Printf("%d\t%s\t%s\t%s\n", key+1, value.ConvertedTime.Format("2006-01-02 15:04:05"), ByteCountDecimal(StringToInt64(value.Size)), strings.TrimPrefix(value.DownloadURI, url+"/"+repo+"/"+download+"/"))
 	}
+}
+
+//PrintDownloadPercent self explanatory
+func PrintDownloadPercent(done chan int64, path string, total int64) {
+
+	var stop = false
+
+	for {
+		select {
+		case <-done:
+			stop = true
+		default:
+
+			file, err := os.Open(path)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fi, err := file.Stat()
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			size := fi.Size()
+
+			if size == 0 {
+				size = 1
+			}
+			var percent = float64(size) / float64(total) * 100
+			if percent != 100 {
+				log.Printf("%.0f%% %s", percent, path)
+			}
+		}
+
+		if stop {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+}
+
+//ComputeSha256 self explanatory
+func ComputeSha256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		log.Fatal(err)
+	}
+	return (hex.EncodeToString(h.Sum(nil)[:]))
 }

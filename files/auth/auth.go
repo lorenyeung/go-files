@@ -3,7 +3,9 @@ package auth
 import (
 	"bufio"
 	"encoding/json"
+	"files/helpers"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -24,7 +26,7 @@ type Creds struct {
 func VerifyAPIKey(urlInput, userName, apiKey string) bool {
 	log.Print("starting VerifyAPIkey request")
 	fmt.Println("Testing " + userName)
-	data := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey)
+	data := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "")
 	if string(data) == "OK" {
 		fmt.Println("Credentials are good to go.")
 		log.Print("finished VerifyAPIkey request")
@@ -37,6 +39,7 @@ func VerifyAPIKey(urlInput, userName, apiKey string) bool {
 
 // GenerateDownloadJSON (re)generate download JSON. Tested.
 func GenerateDownloadJSON() {
+	//TODO optionally read in existing files in case of updated creds/url
 	var urlInput, userName, apiKey string
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter your url: ")
@@ -56,12 +59,12 @@ func GenerateDownloadJSON() {
 		}
 	}
 	fmt.Println("username:" + userName)
-	//TODO need to check if directory exists and/or valid directory
+	//TODO need to check if directory exists and/or valid directory. trim trailing /
 	fmt.Print("Enter your Download location: ")
 	dlLocationInput, _ := reader.ReadString('\n')
 	dlLocationInput = strings.TrimSuffix(dlLocationInput, "\n")
 
-	//TODO need to check if repo exists
+	//TODO need to check if repo exists. trim trailing /
 	fmt.Print("Enter your repository: ")
 	repoInput, _ := reader.ReadString('\n')
 	repoInput = strings.TrimSuffix(repoInput, "\n")
@@ -77,7 +80,7 @@ func GenerateDownloadJSON() {
 	if err != nil {
 		fmt.Printf("The JSON write failed with error %s\n", err)
 	}
-	_ = ioutil.WriteFile("test.json", file, 0644)
+	_ = ioutil.WriteFile(dlLocationInput+"/.conf/download.json", file, 0600)
 }
 
 //GetDownloadJSON get data from DownloadJSON
@@ -102,19 +105,48 @@ func GetDownloadJSON(fileLocation string) Creds {
 }
 
 //GetRestAPI GET rest APIs response with error handling
-func GetRestAPI(urlInput, userName, apiKey string) []byte {
+func GetRestAPI(urlInput, userName, apiKey, filepath string) []byte {
 	client := http.Client{}
-	req2, err := http.NewRequest("GET", urlInput, nil)
-	req2.SetBasicAuth(userName, apiKey)
+	req, err := http.NewRequest("GET", urlInput, nil)
+	req.SetBasicAuth(userName, apiKey)
 	if err != nil {
 		fmt.Printf("The HTTP request failed with error %s\n", err)
 	} else {
-		resp, err := client.Do(req2)
+
+		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Printf("The HTTP response failed with error %s\n", err)
 		}
-		data, _ := ioutil.ReadAll(resp.Body)
-		return data
+		//defer resp.Body.Close()
+
+		if filepath != "" {
+			//download percent logger
+			sourceSha256 := string(resp.Header["X-Checksum-Sha256"][0])
+			fmt.Println(resp.Header["Content-Disposition"][0])
+			// Create the file
+			out, err := os.Create(filepath)
+			if err != nil {
+				fmt.Printf("File create failed with %s\n", err)
+			}
+			defer out.Close()
+
+			done := make(chan int64)
+			go helpers.PrintDownloadPercent(done, filepath, int64(resp.ContentLength))
+			_, err = io.Copy(out, resp.Body)
+			if err != nil {
+				log.Printf("File copy failed with %s\n", err)
+			}
+			log.Println("Checking downloaded Shasum's match")
+			fileSha256 := helpers.ComputeSha256(filepath)
+			if sourceSha256 != fileSha256 {
+				fmt.Printf("Shasums do not match. Source: %s filesystem %s\n", sourceSha256, fileSha256)
+			}
+			log.Println("Shasums match.")
+
+		} else {
+			data, _ := ioutil.ReadAll(resp.Body)
+			return data
+		}
 	}
 	return nil
 }

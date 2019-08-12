@@ -20,6 +20,6 @@ func main() {
 	} else {
 		var download = argsWithoutProg[0]
 		sorted := rest.GetFilesDetails(creds.Username, creds.Apikey, creds.URL, creds.Repository, download)
-		rest.DownloadFiles(sorted, creds)
+		rest.DownloadFilesList(sorted, creds)
 	}
 }
