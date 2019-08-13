@@ -33,7 +33,7 @@ func VerifyAPIKey(urlInput, userName, apiKey string) bool {
 	log.Printf("starting VerifyAPIkey request. Testing: %s\n", userName)
 	data := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "")
 	if string(data) == "OK" {
-		log.Print("finished VerifyAPIkey request. Credentials are good to go.")
+		log.Printf("finished VerifyAPIkey request. Credentials are good to go.")
 		return true
 	}
 	log.Printf("finished VerifyAPIkey request: %s\n", string(data))
