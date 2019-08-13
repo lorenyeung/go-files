@@ -79,27 +79,17 @@ func PrintSorted(sorted TimeSlice, url, repo, download string) {
 
 //PrintDownloadPercent self explanatory
 func PrintDownloadPercent(done chan int64, path string, total int64) {
-
 	var stop = false
-
 	for {
 		select {
 		case <-done:
 			stop = true
 		default:
-
 			file, err := os.Open(path)
-			if err != nil {
-				log.Fatal(err)
-			}
-
+			Check(err, true, "Opening file path")
 			fi, err := file.Stat()
-			if err != nil {
-				log.Fatal(err)
-			}
-
+			Check(err, true, "Getting file statistics")
 			size := fi.Size()
-
 			if size == 0 {
 				size = 1
 			}
@@ -108,11 +98,9 @@ func PrintDownloadPercent(done chan int64, path string, total int64) {
 				log.Printf("%.0f%% %s", percent, path)
 			}
 		}
-
 		if stop {
 			break
 		}
-
 		time.Sleep(time.Second)
 	}
 }
@@ -120,9 +108,7 @@ func PrintDownloadPercent(done chan int64, path string, total int64) {
 //ComputeSha256 self explanatory
 func ComputeSha256(path string) string {
 	f, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
+	Check(err, true, "Opening file path")
 	defer f.Close()
 
 	h := sha256.New()
@@ -130,4 +116,14 @@ func ComputeSha256(path string) string {
 		log.Fatal(err)
 	}
 	return (hex.EncodeToString(h.Sum(nil)[:]))
+}
+
+//Check logger for errors
+func Check(e error, panic bool, logs string) {
+	if e != nil && panic {
+		log.Panicf("%s failed with error:%s\n", logs, e)
+	}
+	if e != nil && !panic {
+		log.Printf("%s failed with error:%s\n", logs, e)
+	}
 }

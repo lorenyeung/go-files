@@ -91,20 +91,15 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
 	var filesystemChecksums = make(map[string]string)
 	if _, err := os.Stat(relativePath); os.IsNotExist(err) {
 		log.Printf("%s does not exist, creating\n", relativePath)
-		//TODO create folder
 		_ = os.Mkdir(relativePath, 0700)
 
 	} else {
 		log.Printf("%s exists, running checksum validation\n", relativePath)
 		f, err := os.Open(relativePath)
-		if err != nil {
-			log.Fatal(err)
-		}
+		helpers.Check(err, true, "Opening download directory")
 		files, err := f.Readdir(-1)
 		f.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
+		helpers.Check(err, true, "Reading download directory files")
 
 		for _, file := range files {
 			if file.IsDir() {
@@ -112,7 +107,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
 				fmt.Printf("%s is a directory. skipping\n", file.Name())
 				continue
 			}
-			//store list of checksums in memory then compare before download. maybe this would be better as a hashmap?
+			//store list of checksums in memory then compare before download
 			sha2 := helpers.ComputeSha256(relativePath + file.Name())
 			filesystemChecksums[sha2] = relativePath + file.Name()
 		}
