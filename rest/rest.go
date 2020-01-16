@@ -44,6 +44,10 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 			var fileDetail helpers.FileStorageJSON
 			var data2 = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey, "")
 			json.Unmarshal([]byte(data2), &fileDetail)
+			if !strings.Contains(fileDetail.DownloadURI, url) {
+				log.Printf("It looks like your URL context has been updated, as the file URL is different. Please reset your download.json")
+				os.Exit(1)
+			}
 			time, _ := time.Parse(time.RFC3339, fileDetail.LastModified)
 			mutex.Lock()
 			unsorted[i+1] = helpers.FileStorageJSON{
