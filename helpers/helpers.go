@@ -31,6 +31,7 @@ type FileStorageJSON struct {
 	ConvertedTime time.Time
 	Size          string `json:"size"`
 	DownloadURI   string `json:"downloadUri"`
+	Path          string `json:"path"`
 	Checksums     struct {
 		Sha256 string `json:"sha256"`
 	} `json:"checksums"`

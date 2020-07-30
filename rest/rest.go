@@ -63,6 +63,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 				LastModified:  fileDetail.LastModified,
 				ConvertedTime: time,
 				Size:          fileDetail.Size,
+				Path:          fileDetail.Path,
 				DownloadURI:   fileDetail.DownloadURI,
 				Checksums:     fileDetail.Checksums,
 			}
@@ -98,7 +99,9 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 			words = append(words, t)
 		}
 	}
-	path := strings.TrimPrefix(sorted[0].DownloadURI, creds.URL+"/"+creds.Repository+"/")
+	//path := strings.TrimPrefix(sorted[0].DownloadURI, creds.URL+"/"+creds.Repository+"/")
+	path := strings.TrimPrefix(sorted[0].Path, "/")
+	log.Debug("Path trimmed:" + path)
 	path = path[:strings.IndexByte(path, '/')]
 	relativePath := creds.DlLocation + "/" + path + "/"
 	var filesystemChecksums = make(map[string]string)
@@ -134,7 +137,9 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 			continue
 		}
 
-		fileName := strings.TrimPrefix(sorted[size-1].DownloadURI, creds.URL+"/"+creds.Repository+"/"+path+"/")
+		//fileName := strings.TrimPrefix(sorted[size-1].DownloadURI, creds.URL+"/"+creds.Repository+"/"+path+"/")
+		fileName := strings.TrimPrefix(sorted[size-1].Path, "/"+path+"/")
+		log.Debug("fileName trimmed:" + path)
 		//check shasum of dowload against in folder
 		if filesystemChecksums[sorted[size-1].Checksums.Sha256] != "" {
 			log.Info("file ", fileName, " exists, skipping download\n")
