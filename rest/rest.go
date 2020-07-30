@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"go-files/auth"
 	"go-files/helpers"
-	"log"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 //GetFilesDetails get file details, sort by date and print
@@ -21,7 +23,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 	//create map of all file details from list of files
 	var unsorted = make(map[int]helpers.FileStorageJSON)
 	var filesList helpers.StorageJSON
-	var data = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "")
+	var data, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "")
 	json.Unmarshal([]byte(data), &filesList)
 	for len(filesList.Children) == 0 {
 		fmt.Println("No files found under " + url + "/" + repo + "/" + download + "/. Enter again, or type n to quit:")
@@ -31,7 +33,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 		if download == "n" {
 			os.Exit(0)
 		}
-		data = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "")
+		data, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "")
 		json.Unmarshal([]byte(data), &filesList)
 	}
 	fmt.Println("Found the following files under " + url + "/" + repo + "/" + download + "/\nNumber\tLast Modified\t\tSize\tPath")
@@ -42,11 +44,18 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 		go func(i int) {
 			defer wg.Done()
 			var fileDetail helpers.FileStorageJSON
-			var data2 = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey, "")
+			var data2, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey, "")
 			json.Unmarshal([]byte(data2), &fileDetail)
+			log.Debug("Debug before, url details:", fileDetail.DownloadURI, " :", url, " :data:", fileDetail, " download uri:", download+filesList.Children[i].URI)
+
+			if strings.Contains(download+filesList.Children[i].URI, "%") {
+				log.Warn("Encoding charactrer % detected in file URL, ", download+filesList.Children[i].URI, ", skipping")
+				return
+			}
 			if !strings.Contains(fileDetail.DownloadURI, url) {
-				log.Printf("It looks like your URL context has been updated, as the file URL is different. Please reset your download.json")
-				os.Exit(1)
+				log.Debug("Debug, url details:", fileDetail.DownloadURI, " :", url, " :data:", fileDetail)
+				log.Warn("It looks like your URL context has been updated, as the file URL is different. Please reset your download.json")
+				//os.Exit(1)
 			}
 			time, _ := time.Parse(time.RFC3339, fileDetail.LastModified)
 			mutex.Lock()
@@ -73,7 +82,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 }
 
 //DownloadFilesList download files selected
-func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
+func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers.Flags) {
 	sortedSize := len(sorted)
 	fmt.Println("Which files do you wish to download? Please separate each number by a space:")
 	reader := bufio.NewReader(os.Stdin)
@@ -94,21 +103,21 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
 	relativePath := creds.DlLocation + "/" + path + "/"
 	var filesystemChecksums = make(map[string]string)
 	if _, err := os.Stat(relativePath); os.IsNotExist(err) {
-		log.Printf("%s does not exist, creating\n", relativePath)
+		log.Debug("%s does not exist, creating\n", relativePath)
 		_ = os.Mkdir(relativePath, 0700)
 
 	} else {
-		log.Printf("%s exists, running checksum validation\n", relativePath)
+		log.Info(relativePath, " exists, running checksum validation")
 		f, err := os.Open(relativePath)
-		helpers.Check(err, true, "Opening download directory")
+		helpers.Check(err, true, "Opening download directory", helpers.Trace())
 		files, err := f.Readdir(-1)
 		f.Close()
-		helpers.Check(err, true, "Reading download directory files")
+		helpers.Check(err, true, "Reading download directory files", helpers.Trace())
 
 		for _, file := range files {
 			if file.IsDir() {
 				//I guess we could walk the entire tree if we wanted..
-				fmt.Printf("%s is a directory. skipping\n", file.Name())
+				log.Info(file.Name(), " is a directory. skipping\n")
 				continue
 			}
 			//store list of checksums in memory then compare before download
@@ -128,13 +137,53 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds) {
 		fileName := strings.TrimPrefix(sorted[size-1].DownloadURI, creds.URL+"/"+creds.Repository+"/"+path+"/")
 		//check shasum of dowload against in folder
 		if filesystemChecksums[sorted[size-1].Checksums.Sha256] != "" {
-			log.Printf("file %s exists, skipping download\n", fileName)
+			log.Info("file ", fileName, " exists, skipping download\n")
 			continue
 		}
 
-		log.Printf("downloading %s %s\n", words[key], sorted[size-1].DownloadURI)
-		auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName)
-		log.Printf("Successfully finished downloading %s\n", sorted[size-1].DownloadURI)
+		log.Info("downloading ", words[key], " ", sorted[size-1].DownloadURI)
+		//breaks when url does not contain proper context, as downloadURI returns context everytime
+		_, filepath := auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName)
+		log.Info("Successfully finished downloading ", sorted[size-1].DownloadURI)
+
+		//try to unarchive if true
+		if flags.UnzipVar {
+			//file type detection
+			buff := make([]byte, 512)
+			file, err := os.Open(filepath)
+			helpers.Check(err, true, "File testing failed at open:", helpers.Trace())
+
+			_, err = file.Read(buff)
+			helpers.Check(err, true, "File testing failed at read:", helpers.Trace())
+			filetype := http.DetectContentType(buff)
+			switch filetype {
+			case "application/x-gzip", "application/zip":
+				log.Info("File is compressed with gzip or zip, attempting to unzip")
+				log.Debug("Unzipping ", filepath, " to ", filepath+"-folder")
+				err := helpers.Unzip(filepath, filepath+"-folder")
+				if err != nil {
+					log.Error(err)
+				}
+			default:
+				log.Info("File is not compressed")
+
+			}
+		}
 	}
-	log.Println("all requested files downloaded. Safe travels!")
+	log.Info("all requested files downloaded. Safe travels!")
 }
+
+/*
+*.tar.bz2)   tar xvjf $1    ;;
+*.tar.gz)    tar xvzf $1    ;;
+*.bz2)       bunzip2 $1     ;;
+*.rar)       unrar x $1     ;;
+*.gz)        gunzip $1      ;;
+*.tar)       tar xvf $1     ;;
+*.tbz2)      tar xvjf $1    ;;
+*.tgz)       tar xvzf $1    ;;
+*.zip)       unzip $1       ;;
+*.Z)         uncompress $1  ;;
+*.7z)        7z x $1        ;;
+*)           echo "don't know how to extract '$1'..." ;;
+ */

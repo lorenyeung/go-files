@@ -1,16 +1,29 @@
 package helpers
 
 import (
+	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	log "github.com/Sirupsen/logrus"
 )
+
+//TraceData trace data struct
+type TraceData struct {
+	File string
+	Line int
+	Fn   string
+}
 
 //FileStorageJSON file details call
 type FileStorageJSON struct {
@@ -21,6 +34,22 @@ type FileStorageJSON struct {
 	Checksums     struct {
 		Sha256 string `json:"sha256"`
 	} `json:"checksums"`
+}
+
+//Trace get function data
+func Trace() TraceData {
+	var trace TraceData
+	pc, file, line, ok := runtime.Caller(1)
+	if !ok {
+		log.Warn("Failed to get function data")
+		return trace
+	}
+
+	fn := runtime.FuncForPC(pc)
+	trace.File = file
+	trace.Line = line
+	trace.Fn = fn.Name()
+	return trace
 }
 
 // StorageJSON file list call
@@ -86,9 +115,9 @@ func PrintDownloadPercent(done chan int64, path string, total int64) {
 			stop = true
 		default:
 			file, err := os.Open(path)
-			Check(err, true, "Opening file path")
+			Check(err, true, "Opening file path", Trace())
 			fi, err := file.Stat()
-			Check(err, true, "Getting file statistics")
+			Check(err, true, "Getting file statistics", Trace())
 			size := fi.Size()
 			if size == 0 {
 				size = 1
@@ -108,7 +137,7 @@ func PrintDownloadPercent(done chan int64, path string, total int64) {
 //ComputeSha256 self explanatory
 func ComputeSha256(path string) string {
 	f, err := os.Open(path)
-	Check(err, true, "Opening file path")
+	Check(err, true, "Opening file path", Trace())
 	defer f.Close()
 
 	h := sha256.New()
@@ -118,12 +147,112 @@ func ComputeSha256(path string) string {
 	return (hex.EncodeToString(h.Sum(nil)[:]))
 }
 
+//SetLogger sets logger settings
+func SetLogger(logLevelVar string) {
+	level, err := log.ParseLevel(logLevelVar)
+	if err != nil {
+		level = log.InfoLevel
+	}
+	log.SetLevel(level)
+
+	log.SetReportCaller(true)
+	customFormatter := new(logrus.TextFormatter)
+	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
+	customFormatter.QuoteEmptyFields = true
+	customFormatter.FullTimestamp = true
+	customFormatter.CallerPrettyfier = func(f *runtime.Frame) (string, string) {
+		repopath := strings.Split(f.File, "/")
+		function := strings.Replace(f.Function, "go-pkgdl/", "", -1)
+		return fmt.Sprintf("%s\t", function), fmt.Sprintf(" %s:%d\t", repopath[len(repopath)-1], f.Line)
+	}
+
+	logrus.SetFormatter(customFormatter)
+	log.Info("Log level set at ", level)
+}
+
 //Check logger for errors
-func Check(e error, panic bool, logs string) {
-	if e != nil && panic {
-		log.Panicf("%s failed with error:%s\n", logs, e)
+func Check(e error, panicCheck bool, logs string, trace TraceData) {
+	if e != nil && panicCheck {
+		log.Error(logs, " failed with error:", e, " ", trace.Fn, " on line:", trace.Line)
+		panic(e)
 	}
-	if e != nil && !panic {
-		log.Printf("%s failed with error:%s\n", logs, e)
+	if e != nil && !panicCheck {
+		log.Warn(logs, " failed with error:", e, " ", trace.Fn, " on line:", trace.Line)
 	}
+}
+
+//Flags struct
+type Flags struct {
+	LogLevelVar, FolderVar string
+	UnzipVar               bool
+}
+
+//SetFlags function
+func SetFlags() Flags {
+	var flags Flags
+	flag.StringVar(&flags.LogLevelVar, "log", "INFO", "Order of Severity: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC")
+	flag.StringVar(&flags.FolderVar, "folder", "", "Folder")
+	flag.BoolVar(&flags.UnzipVar, "unzip", false, "Try to unarchive downloaded files (beta)")
+	flag.Parse()
+	return flags
+}
+
+//Unzip self ex
+func Unzip(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	os.MkdirAll(dest, 0755)
+
+	// Closure to address file descriptors issue with all the deferred .Close() methods
+	extractAndWriteFile := func(f *zip.File) error {
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := rc.Close(); err != nil {
+				panic(err)
+			}
+		}()
+
+		path := filepath.Join(dest, f.Name)
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(path, f.Mode())
+		} else {
+			os.MkdirAll(filepath.Dir(path), f.Mode())
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					panic(err)
+				}
+			}()
+
+			_, err = io.Copy(f, rc)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for _, f := range r.File {
+		err := extractAndWriteFile(f)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

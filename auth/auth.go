@@ -13,10 +13,11 @@ import (
 	"go-files/helpers"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 //Creds struct for creating download.json
@@ -31,7 +32,8 @@ type Creds struct {
 // VerifyAPIKey for errors
 func VerifyAPIKey(urlInput, userName, apiKey string) bool {
 	log.Printf("starting VerifyAPIkey request. Testing: %s\n", userName)
-	data := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "")
+	// username password validation
+	data, _ := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "")
 	if string(data) == "OK" {
 		log.Printf("finished VerifyAPIkey request. Credentials are good to go.")
 		return true
@@ -55,15 +57,16 @@ func GenerateDownloadJSON(configPath string, regen bool, masterKey string) Creds
 		if urlInput == "" {
 			urlInput = creds.URL
 		}
-		fmt.Printf("Enter your username [%s]: ", creds.Username)
+		fmt.Printf("Enter your username (leave blank for token) [%s]: ", creds.Username)
 		userName, _ = reader.ReadString('\n')
 		userName = strings.TrimSuffix(userName, "\n")
 		if userName == "" {
 			userName = creds.Username
 		}
-		fmt.Print("Enter your API key: ")
+		fmt.Print("Enter your API key/token: ")
 		apiKey, _ = reader.ReadString('\n')
 		apiKey = strings.TrimSuffix(apiKey, "\n")
+
 		if VerifyAPIKey(urlInput, userName, apiKey) {
 			break
 		} else {
@@ -98,9 +101,9 @@ func writeFileDownloadJSON(configPath, urlInput, userName, apiKey, dlLocationInp
 	}
 	//should probably encrypt data here
 	fileData, err := json.Marshal(data)
-	helpers.Check(err, true, "The JSON marshal")
+	helpers.Check(err, true, "The JSON marshal", helpers.Trace())
 	err2 := ioutil.WriteFile(configPath, fileData, 0600)
-	helpers.Check(err2, true, "The JSON write")
+	helpers.Check(err2, true, "The JSON write", helpers.Trace())
 
 	data2 := Creds{
 		URL:        urlInput,
@@ -137,44 +140,50 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 }
 
 //GetRestAPI GET rest APIs response with error handling
-func GetRestAPI(urlInput, userName, apiKey, filepath string) []byte {
+func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
 	client := http.Client{}
 	req, err := http.NewRequest("GET", urlInput, nil)
-	req.SetBasicAuth(userName, apiKey)
+	if userName != "" {
+		log.Debug("Using Basic Auth")
+		req.SetBasicAuth(userName, apiKey)
+	} else {
+		log.Debug("Using Token Auth")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	if err != nil {
 		fmt.Printf("The HTTP request failed with error %s\n", err)
 	} else {
 
 		resp, err := client.Do(req)
-		helpers.Check(err, false, "The HTTP response")
+		helpers.Check(err, false, "The HTTP response", helpers.Trace())
 		//defer resp.Body.Close()
 
 		if filepath != "" {
 			//download percent logger
 			sourceSha256 := string(resp.Header["X-Checksum-Sha256"][0])
-			fmt.Println(resp.Header["Content-Disposition"][0])
+			log.Debug(resp.Header["Content-Disposition"][0])
 			// Create the file
 			out, err := os.Create(filepath)
-			helpers.Check(err, false, "File create")
+			helpers.Check(err, false, "File create", helpers.Trace())
 			defer out.Close()
 
 			done := make(chan int64)
 			go helpers.PrintDownloadPercent(done, filepath, int64(resp.ContentLength))
 			_, err = io.Copy(out, resp.Body)
-			helpers.Check(err, true, "The file copy")
-			log.Println("Checking downloaded Shasum's match")
+			helpers.Check(err, true, "The file copy", helpers.Trace())
+			log.Info("\nChecking downloaded Shasum's match")
 			fileSha256 := helpers.ComputeSha256(filepath)
 			if sourceSha256 != fileSha256 {
-				fmt.Printf("Shasums do not match. Source: %s filesystem %s\n", sourceSha256, fileSha256)
+				log.Warn("Shasums do not match. Source: %s filesystem %s\n", sourceSha256, fileSha256)
 			}
-			log.Println("Shasums match.")
+			log.Debug("Shasums match.")
 
 		} else {
 			data, _ := ioutil.ReadAll(resp.Body)
-			return data
+			return data, ""
 		}
 	}
-	return nil
+	return nil, filepath
 }
 
 //CreateHash self explanatory
@@ -189,7 +198,7 @@ func Encrypt(dataString string, passphrase string) string {
 	data := []byte(dataString)
 	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
 	gcm, err := cipher.NewGCM(block)
-	helpers.Check(err, true, "Cipher")
+	helpers.Check(err, true, "Cipher", helpers.Trace())
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
 		panic(err.Error())
@@ -204,13 +213,13 @@ func Decrypt(dataString string, passphrase string) string {
 
 	key := []byte(CreateHash(passphrase))
 	block, err := aes.NewCipher(key)
-	helpers.Check(err, true, "Cipher")
+	helpers.Check(err, true, "Cipher", helpers.Trace())
 	gcm, err := cipher.NewGCM(block)
-	helpers.Check(err, true, "Cipher GCM")
+	helpers.Check(err, true, "Cipher GCM", helpers.Trace())
 	nonceSize := gcm.NonceSize()
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	helpers.Check(err, true, "GCM open")
+	helpers.Check(err, true, "GCM open", helpers.Trace())
 	return string(plaintext)
 }
 
@@ -219,16 +228,16 @@ func VerifyMasterKey(configPath string) string {
 	_, err := os.Open(configPath)
 	var token string
 	if err != nil {
-		log.Printf("Finding master key failed with error %s\n", err)
+		log.Warn("Finding master key failed with error %s\n", err)
 		data, err := generateRandomBytes(32)
-		helpers.Check(err, true, "Generating new master key")
+		helpers.Check(err, true, "Generating new master key", helpers.Trace())
 		err2 := ioutil.WriteFile(configPath, []byte(base64.URLEncoding.EncodeToString(data)), 0600)
-		helpers.Check(err2, true, "Master key write")
-		log.Println("Successfully generated master key")
+		helpers.Check(err2, true, "Master key write", helpers.Trace())
+		log.Info("Successfully generated master key")
 		token = base64.URLEncoding.EncodeToString(data)
 	} else {
 		dat, err := ioutil.ReadFile(configPath)
-		helpers.Check(err, true, "Reading master key")
+		helpers.Check(err, true, "Reading master key", helpers.Trace())
 		token = string(dat)
 	}
 	return token
