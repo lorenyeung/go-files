@@ -45,7 +45,7 @@ func userForTesting() Creds {
 	}
 
 	data := Creds{
-		URL:        "http://localhost:8081/artifactory",
+		URL:        "http://localhost:8082",
 		Username:   "tester",
 		Apikey:     "",
 		DlLocation: string(usr.HomeDir + "/testing"),

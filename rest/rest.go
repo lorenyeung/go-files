@@ -147,7 +147,6 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		}
 
 		log.Info("downloading ", words[key], " ", sorted[size-1].DownloadURI)
-		//breaks when url does not contain proper context, as downloadURI returns context everytime
 		_, filepath := auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName)
 		log.Info("Successfully finished downloading ", sorted[size-1].DownloadURI)
 
