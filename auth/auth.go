@@ -141,6 +141,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 
 //GetRestAPI GET rest APIs response with error handling
 func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
+	log.Debug("URL:", urlInput, " to directory:", filepath, " with cred:", userName)
 	client := http.Client{}
 	req, err := http.NewRequest("GET", urlInput, nil)
 	if userName != "" {
@@ -151,7 +152,7 @@ func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	if err != nil {
-		fmt.Printf("The HTTP request failed with error %s\n", err)
+		log.Warn("The HTTP request failed with error %s\n", err)
 	} else {
 
 		resp, err := client.Do(req)
@@ -160,8 +161,16 @@ func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
 
 		if filepath != "" {
 			//download percent logger
-			sourceSha256 := string(resp.Header["X-Checksum-Sha256"][0])
+			log.Debug("logging content-header")
 			log.Debug(resp.Header["Content-Disposition"][0])
+			log.Debug("logging checksum:", resp.Header["X-Checksum-Sha256"])
+			var sourceSha256 string
+			if len(resp.Header["X-Checksum-Sha256"]) > 0 {
+				sourceSha256 = string(resp.Header["X-Checksum-Sha256"][0])
+			} else {
+				log.Warn("Unable to retrieve SHA256 checksum header")
+				sourceSha256 = ""
+			}
 			// Create the file
 			out, err := os.Create(filepath)
 			helpers.Check(err, false, "File create", helpers.Trace())

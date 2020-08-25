@@ -100,6 +100,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		}
 	}
 	//path := strings.TrimPrefix(sorted[0].DownloadURI, creds.URL+"/"+creds.Repository+"/")
+	log.Debug("size of words", words)
 	path := strings.TrimPrefix(sorted[0].Path, "/")
 	log.Debug("Path trimmed:" + path)
 	path = path[:strings.IndexByte(path, '/')]
@@ -107,7 +108,8 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 	var filesystemChecksums = make(map[string]string)
 	if _, err := os.Stat(relativePath); os.IsNotExist(err) {
 		log.Debug("%s does not exist, creating\n", relativePath)
-		_ = os.Mkdir(relativePath, 0700)
+		err2 := os.Mkdir(relativePath, 0700)
+		helpers.Check(err2, true, "Creating log folder", helpers.Trace())
 
 	} else {
 		log.Info(relativePath, " exists, running checksum validation")
@@ -129,17 +131,19 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		}
 	}
 
+	log.Debug("size of index", words)
+
 	for key := range words {
 		//check if the index is an invalid option, skip if needed
 		size := helpers.StringToInt64(words[key])
 		if size > int64(sortedSize) || size < 1 {
-			log.Printf("Out of bounds number %d, skipping", size)
+			log.Info("Out of bounds number %d, skipping", size)
 			continue
 		}
 
 		//fileName := strings.TrimPrefix(sorted[size-1].DownloadURI, creds.URL+"/"+creds.Repository+"/"+path+"/")
 		fileName := strings.TrimPrefix(sorted[size-1].Path, "/"+path+"/")
-		log.Debug("fileName trimmed:" + path)
+		log.Debug("fileName trimmed:", fileName, " path:", path, " sorted[size-1].Path:", sorted[size-1].Path)
 		//check shasum of dowload against in folder
 		if filesystemChecksums[sorted[size-1].Checksums.Sha256] != "" {
 			log.Info("file ", fileName, " exists, skipping download\n")
@@ -147,6 +151,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		}
 
 		log.Info("downloading ", words[key], " ", sorted[size-1].DownloadURI)
+		log.Debug("sorted:", sorted)
 		_, filepath := auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName)
 		log.Info("Successfully finished downloading ", sorted[size-1].DownloadURI)
 
