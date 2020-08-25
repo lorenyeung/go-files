@@ -23,7 +23,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 	//create map of all file details from list of files
 	var unsorted = make(map[int]helpers.FileStorageJSON)
 	var filesList helpers.StorageJSON
-	var data, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "")
+	var data, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "", "")
 	json.Unmarshal([]byte(data), &filesList)
 	for len(filesList.Children) == 0 {
 		fmt.Println("No files found under " + url + "/" + repo + "/" + download + "/. Enter again, or type n to quit:")
@@ -33,7 +33,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 		if download == "n" {
 			os.Exit(0)
 		}
-		data, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "")
+		data, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+"/", username, apiKey, "", "")
 		json.Unmarshal([]byte(data), &filesList)
 	}
 	fmt.Println("Found the following files under " + url + "/" + repo + "/" + download + "/\nNumber\tLast Modified\t\tSize\tPath")
@@ -44,7 +44,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 		go func(i int) {
 			defer wg.Done()
 			var fileDetail helpers.FileStorageJSON
-			var data2, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey, "")
+			var data2, _ = auth.GetRestAPI(url+"/api/storage/"+repo+"/"+download+filesList.Children[i].URI, username, apiKey, "", "")
 			json.Unmarshal([]byte(data2), &fileDetail)
 			log.Debug("Debug before, url details:", fileDetail.DownloadURI, " :", url, " :data:", fileDetail, " download uri:", download+filesList.Children[i].URI)
 
@@ -152,7 +152,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 
 		log.Info("downloading ", words[key], " ", sorted[size-1].DownloadURI)
 		log.Debug("sorted:", sorted)
-		_, filepath := auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName)
+		_, filepath := auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName, sorted[size-1].Checksums.Sha256)
 		log.Info("Successfully finished downloading ", sorted[size-1].DownloadURI)
 
 		//try to unarchive if true

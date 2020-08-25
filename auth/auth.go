@@ -33,7 +33,7 @@ type Creds struct {
 func VerifyAPIKey(urlInput, userName, apiKey string) bool {
 	log.Printf("starting VerifyAPIkey request. Testing: %s\n", userName)
 	// username password validation
-	data, _ := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "")
+	data, _ := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "", "")
 	if string(data) == "OK" {
 		log.Printf("finished VerifyAPIkey request. Credentials are good to go.")
 		return true
@@ -140,7 +140,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 }
 
 //GetRestAPI GET rest APIs response with error handling
-func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
+func GetRestAPI(urlInput, userName, apiKey, filepath, backupSha256 string) ([]byte, string) {
 	log.Debug("URL:", urlInput, " to directory:", filepath, " with cred:", userName)
 	client := http.Client{}
 	req, err := http.NewRequest("GET", urlInput, nil)
@@ -161,15 +161,21 @@ func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
 
 		if filepath != "" {
 			//download percent logger
-			log.Debug("logging content-header")
-			log.Debug(resp.Header["Content-Disposition"][0])
+			log.Debug("logging Header map:", resp.Header)
+			log.Debug("logging content-disposition:", resp.Header["Content-Disposition"])
 			log.Debug("logging checksum:", resp.Header["X-Checksum-Sha256"])
 			var sourceSha256 string
 			if len(resp.Header["X-Checksum-Sha256"]) > 0 {
 				sourceSha256 = string(resp.Header["X-Checksum-Sha256"][0])
 			} else {
-				log.Warn("Unable to retrieve SHA256 checksum header")
-				sourceSha256 = ""
+				//redirect doesn't return checksum headers
+				log.Warn("Unable to retrieve SHA256 checksum header, trying backup SHA256")
+				if backupSha256 != "" {
+					sourceSha256 = backupSha256
+				} else {
+					log.Warn("Backup SHA256 is empty")
+					sourceSha256 = ""
+				}
 			}
 			// Create the file
 			out, err := os.Create(filepath)
@@ -183,7 +189,7 @@ func GetRestAPI(urlInput, userName, apiKey, filepath string) ([]byte, string) {
 			log.Info("\nChecking downloaded Shasum's match")
 			fileSha256 := helpers.ComputeSha256(filepath)
 			if sourceSha256 != fileSha256 {
-				log.Warn("Shasums do not match. Source: %s filesystem %s\n", sourceSha256, fileSha256)
+				log.Warn("Shasums do not match. Source:", sourceSha256, " filesystem:", fileSha256)
 			}
 			log.Debug("Shasums match.")
 
