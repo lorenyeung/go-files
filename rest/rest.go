@@ -86,22 +86,54 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 //DownloadFilesList download files selected
 func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers.Flags, masterkey, readmeFileName string) {
 	sortedSize := len(sorted)
-	fmt.Println("Which files do you wish to download? Please separate each number by a space:")
+	fmt.Println("Which files do you wish to download? Please separate each number by a space. Use a '-' for ranges, like: 1 3-6 11-12:")
 	reader := bufio.NewReader(os.Stdin)
 	downloadIn, _ := reader.ReadString('\n')
 	download := strings.TrimSuffix(downloadIn, "\n")
 
-	//TODO need number check
 	words := strings.Fields(download)
+	//download all
 	if strings.HasPrefix(download, "0 ") || download == "0" || strings.HasSuffix(download, " 0") || strings.Contains(download, " 0 ") {
+		log.Info("zero detected, downloading everything")
 		words = nil
 		for i := 0; i < sortedSize; i++ {
 			t := strconv.Itoa(i + 1)
 			words = append(words, t)
 		}
+	} else if strings.Contains(download, "-") {
+		//parse ranges
+		words = nil
+		numbers := strings.Split(download, " ")
+		for i := 0; i < len(numbers); i++ {
+			if strings.Contains(numbers[i], "-") {
+				log.Info("found number with dash ", numbers[i])
+				splitNumbers := strings.Split(numbers[i], "-")
+				first, err := strconv.Atoi(splitNumbers[0])
+				helpers.Check(err, true, "floor check", helpers.Trace())
+				second, err := strconv.Atoi(splitNumbers[len(splitNumbers)-1])
+				helpers.Check(err, true, "ceiling check", helpers.Trace())
+				for j := first; j <= second; j++ {
+					log.Info("adding to download:", j)
+					words = append(words, strconv.Itoa(j))
+				}
+			} else {
+				words = append(words, numbers[i])
+			}
+		}
 	}
+	log.Info("downloading the indexes (raw):", words)
+	//remove duplicates from list
+	check := make(map[string]int)
+	for _, val := range words {
+		check[val] = 1
+	}
+	words = nil
+	for letter, _ := range check {
+		words = append(words, letter)
+	}
+	log.Info("downloading the indexes (dedup):", words)
+
 	//path := strings.TrimPrefix(sorted[0].DownloadURI, creds.URL+"/"+creds.Repository+"/")
-	log.Debug("size of words", words)
 	path := strings.TrimPrefix(sorted[0].Path, "/")
 	log.Debug("Path trimmed:" + path)
 	path = path[:strings.IndexByte(path, '/')]
@@ -143,8 +175,8 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 	for key := range words {
 		//check if the index is an invalid option, skip if needed
 		size := helpers.StringToInt64(words[key])
-		if size > int64(sortedSize) || size < 1 {
-			log.Info("Out of bounds number %d, skipping", size)
+		if size < 1 || size > int64(sortedSize) {
+			log.Warn("Out of bounds number ", words[key], ", skipping")
 			continue
 		}
 

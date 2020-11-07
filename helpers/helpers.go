@@ -105,8 +105,8 @@ func ByteCountDecimal(b int64) string {
 func StringToInt64(data string) int64 {
 	convert, err := strconv.ParseInt(data, 10, 64)
 	if err != nil {
-		fmt.Printf("%d is not of type %T", convert, convert)
-		os.Exit(127)
+		log.Warn(data, " is not of type integer")
+		return 0
 	}
 	return convert
 }
