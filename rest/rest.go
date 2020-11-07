@@ -130,9 +130,10 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 			filesystemChecksums[sha2] = relativePath + file.Name()
 		}
 	}
+	//create file
+	log.Debug("creating readme file under ", relativePath+"/.lorenyfolderReadme")
 
 	log.Debug("size of index", words)
-
 	for key := range words {
 		//check if the index is an invalid option, skip if needed
 		size := helpers.StringToInt64(words[key])

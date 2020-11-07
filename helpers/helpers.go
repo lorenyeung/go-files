@@ -184,8 +184,8 @@ func Check(e error, panicCheck bool, logs string, trace TraceData) {
 
 //Flags struct
 type Flags struct {
-	LogLevelVar, FolderVar string
-	UnzipVar               bool
+	LogLevelVar, FolderVar             string
+	UnzipVar, ShowDownloadedFoldersVar bool
 }
 
 //SetFlags function
@@ -194,6 +194,7 @@ func SetFlags() Flags {
 	flag.StringVar(&flags.LogLevelVar, "log", "INFO", "Order of Severity: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC")
 	flag.StringVar(&flags.FolderVar, "folder", "", "Folder")
 	flag.BoolVar(&flags.UnzipVar, "unzip", false, "Try to unarchive downloaded files (beta)")
+	flag.BoolVar(&flags.ShowDownloadedFoldersVar, "show", false, "Show Downloaded Folders ")
 	flag.Parse()
 	return flags
 }
