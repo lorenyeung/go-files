@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go-files/auth"
 	"go-files/helpers"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"sort"
@@ -83,7 +84,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 }
 
 //DownloadFilesList download files selected
-func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers.Flags) {
+func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers.Flags, masterkey string) {
 	sortedSize := len(sorted)
 	fmt.Println("Which files do you wish to download? Please separate each number by a space:")
 	reader := bufio.NewReader(os.Stdin)
@@ -126,12 +127,17 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 				continue
 			}
 			//store list of checksums in memory then compare before download
-			sha2 := helpers.ComputeSha256(relativePath + file.Name())
-			filesystemChecksums[sha2] = relativePath + file.Name()
+			if flags.SkipDownloadedChecksumCheckVar == false {
+				log.Debug("Checksum check not skipped")
+				sha2 := helpers.ComputeSha256(relativePath + file.Name())
+				filesystemChecksums[sha2] = relativePath + file.Name()
+			}
 		}
 	}
 	//create file
-	log.Debug("creating readme file under ", relativePath+"/.lorenyfolderReadme")
+	readme := relativePath + "/.lorenyfolderReadme"
+	log.Debug("Trying to create readme file under ", readme)
+	detectDetailsFile(readme, masterkey)
 
 	log.Debug("size of index", words)
 	for key := range words {
@@ -145,7 +151,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		//fileName := strings.TrimPrefix(sorted[size-1].DownloadURI, creds.URL+"/"+creds.Repository+"/"+path+"/")
 		fileName := strings.TrimPrefix(sorted[size-1].Path, "/"+path+"/")
 		log.Debug("fileName trimmed:", fileName, " path:", path, " sorted[size-1].Path:", sorted[size-1].Path)
-		//check shasum of dowload against in folder
+		//check shasum of download against in folder
 		if filesystemChecksums[sorted[size-1].Checksums.Sha256] != "" {
 			log.Info("file ", fileName, " exists, skipping download\n")
 			continue
@@ -180,7 +186,48 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 			}
 		}
 	}
-	log.Info("all requested files downloaded. Safe travels!")
+	log.Info("all requested files downloaded to " + relativePath + ". Safe travels!")
+}
+
+func detectDetailsFile(readme, masterKey string) {
+	if _, err := os.Stat(readme); os.IsNotExist(err) {
+		log.Info("Readme does not exist, creating")
+
+		fmt.Println("Readme Title:")
+		reader := bufio.NewReader(os.Stdin)
+		readmeTitleIn, _ := reader.ReadString('\n')
+		readmeTitle := strings.TrimSuffix(readmeTitleIn, "\n")
+
+		fmt.Println("Readme Description:")
+		reader = bufio.NewReader(os.Stdin)
+		readmeDescIn, _ := reader.ReadString('\n')
+		readmeDesc := strings.TrimSuffix(readmeDescIn, "\n")
+
+		data := helpers.FolderDetailsJSON{
+			Title:        auth.Encrypt(readmeTitle, masterKey),
+			Description:  auth.Encrypt(readmeDesc, masterKey),
+			LastModified: time.Now(),
+		}
+		fileData, err := json.Marshal(data)
+		helpers.Check(err, true, "The JSON marshal", helpers.Trace())
+
+		err = ioutil.WriteFile(readme, fileData, 0644)
+		helpers.Check(err, false, "File create", helpers.Trace())
+
+	} else {
+		log.Debug("Readme exists")
+		var resultData helpers.FolderDetailsJSON
+		file, err := os.Open(readme)
+		helpers.Check(err, true, "Reading readme", helpers.Trace())
+		byteValue, _ := ioutil.ReadAll(file)
+		json.Unmarshal([]byte(byteValue), &resultData)
+		//TODO need to validate some of these fields
+		var data helpers.FolderDetailsJSON
+		data.Title = auth.Decrypt(resultData.Title, masterKey)
+		data.Description = auth.Decrypt(resultData.Description, masterKey)
+		data.LastModified = resultData.LastModified
+		fmt.Println(data.Title, data.Description)
+	}
 }
 
 /*

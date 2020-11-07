@@ -55,6 +55,6 @@ func main() {
 	//var download = flags.FolderVar
 	sorted := rest.GetFilesDetails(creds.Username, creds.Apikey, creds.URL, creds.Repository, flags.FolderVar)
 
-	rest.DownloadFilesList(sorted, creds, flags)
+	rest.DownloadFilesList(sorted, creds, flags, masterKey)
 
 }

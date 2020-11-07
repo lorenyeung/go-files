@@ -37,6 +37,17 @@ type FileStorageJSON struct {
 	} `json:"checksums"`
 }
 
+//FolderDetailsJSON details about downloaded folders
+type FolderDetailsJSON struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Files       struct {
+		Sha256   string `json:"sha256"`
+		Filename string `json:"filename"`
+	} `json:"files"`
+	LastModified time.Time
+}
+
 //Trace get function data
 func Trace() TraceData {
 	var trace TraceData
@@ -184,8 +195,8 @@ func Check(e error, panicCheck bool, logs string, trace TraceData) {
 
 //Flags struct
 type Flags struct {
-	LogLevelVar, FolderVar             string
-	UnzipVar, ShowDownloadedFoldersVar bool
+	LogLevelVar, FolderVar                                             string
+	UnzipVar, ShowDownloadedFoldersVar, SkipDownloadedChecksumCheckVar bool
 }
 
 //SetFlags function
@@ -194,7 +205,8 @@ func SetFlags() Flags {
 	flag.StringVar(&flags.LogLevelVar, "log", "INFO", "Order of Severity: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC")
 	flag.StringVar(&flags.FolderVar, "folder", "", "Folder")
 	flag.BoolVar(&flags.UnzipVar, "unzip", false, "Try to unarchive downloaded files (beta)")
-	flag.BoolVar(&flags.ShowDownloadedFoldersVar, "show", false, "Show Downloaded Folders ")
+	flag.BoolVar(&flags.ShowDownloadedFoldersVar, "show", false, "Show downloaded folders")
+	flag.BoolVar(&flags.SkipDownloadedChecksumCheckVar, "skipchecksum", false, "Skip downloaded checksum check")
 	flag.Parse()
 	return flags
 }
