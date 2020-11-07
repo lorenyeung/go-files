@@ -84,7 +84,7 @@ func GetFilesDetails(username, apiKey, url, repo, download string) helpers.TimeS
 }
 
 //DownloadFilesList download files selected
-func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers.Flags, masterkey string) {
+func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers.Flags, masterkey, readmeFileName string) {
 	sortedSize := len(sorted)
 	fmt.Println("Which files do you wish to download? Please separate each number by a space:")
 	reader := bufio.NewReader(os.Stdin)
@@ -135,7 +135,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		}
 	}
 	//create file
-	readme := relativePath + "/.lorenyfolderReadme"
+	readme := relativePath + "/" + readmeFileName
 	log.Debug("Trying to create readme file under ", readme)
 	detectDetailsFile(readme, masterkey)
 
@@ -215,19 +215,26 @@ func detectDetailsFile(readme, masterKey string) {
 		helpers.Check(err, false, "File create", helpers.Trace())
 
 	} else {
-		log.Debug("Readme exists")
-		var resultData helpers.FolderDetailsJSON
-		file, err := os.Open(readme)
-		helpers.Check(err, true, "Reading readme", helpers.Trace())
-		byteValue, _ := ioutil.ReadAll(file)
-		json.Unmarshal([]byte(byteValue), &resultData)
-		//TODO need to validate some of these fields
-		var data helpers.FolderDetailsJSON
-		data.Title = auth.Decrypt(resultData.Title, masterKey)
-		data.Description = auth.Decrypt(resultData.Description, masterKey)
-		data.LastModified = resultData.LastModified
-		fmt.Println(data.Title, data.Description)
+		data := ReadDetailsFile(readme, masterKey)
+		fmt.Println(data.Title, data.Description, data.LastModified)
 	}
+}
+
+//ReadDetailsFile reads in hidden metadata file about folder
+func ReadDetailsFile(readme, masterKey string) helpers.FolderDetailsJSON {
+	log.Debug("Readme exists")
+	var resultData helpers.FolderDetailsJSON
+	file, err := os.Open(readme)
+	helpers.Check(err, true, "Reading readme", helpers.Trace())
+	byteValue, _ := ioutil.ReadAll(file)
+	json.Unmarshal([]byte(byteValue), &resultData)
+	//TODO need to validate some of these fields
+	var data helpers.FolderDetailsJSON
+	data.Title = auth.Decrypt(resultData.Title, masterKey)
+	data.Description = auth.Decrypt(resultData.Description, masterKey)
+	data.LastModified = resultData.LastModified
+	//TODO need to account for file sha later
+	return data
 }
 
 /*

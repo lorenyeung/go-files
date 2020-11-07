@@ -41,7 +41,7 @@ type FileStorageJSON struct {
 type FolderDetailsJSON struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	Files       struct {
+	Files       []struct {
 		Sha256   string `json:"sha256"`
 		Filename string `json:"filename"`
 	} `json:"files"`
