@@ -113,7 +113,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 				second, err := strconv.Atoi(splitNumbers[len(splitNumbers)-1])
 				helpers.Check(err, true, "ceiling check", helpers.Trace())
 				for j := first; j <= second; j++ {
-					log.Info("adding to download:", j)
+					log.Debug("adding to download:", j)
 					words = append(words, strconv.Itoa(j))
 				}
 			} else {
@@ -121,7 +121,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 			}
 		}
 	}
-	log.Info("downloading the indexes (raw):", words)
+	log.Debug("downloading the indexes (raw):", words)
 	//remove duplicates from list
 	check := make(map[string]int)
 	for _, val := range words {
@@ -160,7 +160,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 			}
 			//store list of checksums in memory then compare before download
 			if flags.SkipDownloadedChecksumCheckVar == false {
-				log.Debug("Checksum check not skipped")
+				log.Debug("Checksum check not skipped for:", relativePath+file.Name())
 				sha2 := helpers.ComputeSha256(relativePath + file.Name())
 				filesystemChecksums[sha2] = relativePath + file.Name()
 			}
@@ -191,7 +191,29 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 
 		log.Info("downloading ", words[key], " ", sorted[size-1].DownloadURI)
 		log.Debug("sorted:", sorted)
+		// do some naive file type detection here
+		readableFilesExtensions := []string{"txt", "pdf", "json", "yaml", "yml", "json", "xml"}
+		var readableFile bool
+		for i := range readableFilesExtensions {
+			if strings.HasSuffix(fileName, readableFilesExtensions[i]) {
+				log.Info("do not create folder, is readable without unarchiving:", fileName)
+				readableFile = true
+			}
+		}
+		oldRelativePath := relativePath
+		if !readableFile {
+			log.Info("creating folder due to archive:", relativePath+fileName+"-folder")
+			err := os.Mkdir(relativePath+fileName+"-folder", 0755)
+			helpers.Check(err, false, "Archive folder create", helpers.Trace())
+			relativePath = relativePath + fileName + "-folder/"
+
+		}
 		_, filepath := auth.GetRestAPI(sorted[size-1].DownloadURI, creds.Username, creds.Apikey, relativePath+fileName, sorted[size-1].Checksums.Sha256)
+		if !readableFile {
+			log.Debug("creating symlink for file:", fileName)
+			os.Symlink(relativePath+fileName, oldRelativePath+"."+fileName)
+			//create symlink post download for checksum checker
+		}
 		log.Info("Successfully finished downloading ", sorted[size-1].DownloadURI)
 
 		//try to unarchive if true
@@ -217,7 +239,21 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 
 			}
 		}
+		//reset relative path
+		relativePath = oldRelativePath
 	}
+	//update readme last modified
+	log.Info("Updating readme last modified to ", time.Now())
+	readmeData := ReadDetailsFile(readme, masterkey)
+	readmeData.LastModified = time.Now()
+	readmeData.Title = auth.Encrypt(readmeData.Title, masterkey)
+	readmeData.Description = auth.Encrypt(readmeData.Description, masterkey)
+	fileData, err := json.Marshal(readmeData)
+	helpers.Check(err, true, "The JSON marshal", helpers.Trace())
+
+	err = ioutil.WriteFile(readme, fileData, 0644)
+	helpers.Check(err, false, "Readme File update", helpers.Trace())
+
 	log.Info("all requested files downloaded to " + relativePath + ". Safe travels!")
 }
 
