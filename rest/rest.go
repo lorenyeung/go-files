@@ -169,7 +169,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 	//create file
 	readme := relativePath + "/" + readmeFileName
 	log.Debug("Trying to create readme file under ", readme)
-	detectDetailsFile(readme, masterkey)
+	DetectDetailsFile(readme, masterkey)
 
 	log.Debug("size of index", words)
 	for key := range words {
@@ -257,7 +257,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 	log.Info("all requested files downloaded to " + relativePath + ". Safe travels!")
 }
 
-func detectDetailsFile(readme, masterKey string) {
+func DetectDetailsFile(readme, masterKey string) {
 	if _, err := os.Stat(readme); os.IsNotExist(err) {
 		log.Info("Readme does not exist, creating")
 

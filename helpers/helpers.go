@@ -195,8 +195,8 @@ func Check(e error, panicCheck bool, logs string, trace TraceData) {
 
 //Flags struct
 type Flags struct {
-	LogLevelVar, FolderVar                                             string
-	UnzipVar, ShowDownloadedFoldersVar, SkipDownloadedChecksumCheckVar bool
+	LogLevelVar, FolderVar, DeleteVar, ManualReadmeVar                                  string
+	UnzipVar, ShowDownloadedFoldersVar, SkipDownloadedChecksumCheckVar, DeleteVerifyVar bool
 }
 
 //SetFlags function
@@ -204,6 +204,9 @@ func SetFlags() Flags {
 	var flags Flags
 	flag.StringVar(&flags.LogLevelVar, "log", "INFO", "Order of Severity: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC")
 	flag.StringVar(&flags.FolderVar, "folder", "", "Folder")
+	flag.StringVar(&flags.DeleteVar, "delete", "", "Timestamp to delete upto. Use in conjunction with -delv. Format is 2021-01-01T00:00:00-07:00")
+	flag.StringVar(&flags.ManualReadmeVar, "manualreadme", "", "Generate manual readme")
+	flag.BoolVar(&flags.DeleteVerifyVar, "delv", false, "Output files to delete. Doesn't delete by default. Use in conjunction with -delete")
 	flag.BoolVar(&flags.UnzipVar, "unzip", false, "Try to unarchive downloaded files (beta)")
 	flag.BoolVar(&flags.ShowDownloadedFoldersVar, "show", false, "Show downloaded folders")
 	flag.BoolVar(&flags.SkipDownloadedChecksumCheckVar, "skipchecksum", false, "Skip downloaded checksum check")

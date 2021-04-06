@@ -1,5 +1,7 @@
 #!/bin/bash
-LATEST_SCRIPT_TAG=$(curl -s https://api.github.com/repos/lorenyeung/forceReindexXray/releases/latest | jq -r '.tag_name')
+GIT_REPO=$(jq -r '.git_repo' metadata.json)
+BINARY=$(jq -r '.binary_prefix' metadata.json)
+LATEST_SCRIPT_TAG=$(curl -s https://api.github.com/repos/lorenyeung/$GIT_REPO/releases/latest | jq -r '.tag_name')
 LOCAL_TAG_NAME=$(jq -r '.script_version' metadata.json)
 LOCAL_NAME=$(echo "${LOCAL_TAG_NAME/v/}")
 
@@ -49,9 +51,9 @@ echo "Looks good?"
         case $yn in
             Yes)
                 echo $body > release.json 
-                curl -u $GIT_USER:$GIT_TOKEN -XPOST https://api.github.com/repos/lorenyeung/forceReindexXray/releases -H "Content-Type: application/json" -T release.json -o release-response.json
+                curl -u $GIT_USER:$GIT_TOKEN -XPOST https://api.github.com/repos/lorenyeung/$GIT_REPO/releases -H "Content-Type: application/json" -T release.json -o release-response.json
                 rm release.json
-                BINARIES=("reindex-darwin-x64" "reindex-linux-x64")
+                BINARIES=("$BINARY-darwin-x64" "$BINARY-linux-x64")
                 ASSET_URL=$(jq -r '.upload_url' release-response.json)
                 edited=$(echo $ASSET_URL | sed 's/{?name,label}//')
 
