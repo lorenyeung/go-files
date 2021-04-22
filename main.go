@@ -1,26 +1,42 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"go-files/auth"
-	"go-files/helpers"
-	"go-files/rest"
 	"os"
 	"os/exec"
 	"os/user"
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/lorenyeung/go-files/auth"
+	"github.com/lorenyeung/go-files/helpers"
+	"github.com/lorenyeung/go-files/rest"
+
+	log "github.com/sirupsen/logrus"
 )
 
+var gitCommit string
+var version string
+
+func printVersion() {
+	fmt.Println("Current build version:", gitCommit, "Current Version:", version)
+}
+
 func main() {
+	versionFlag := flag.Bool("v", false, "Print the current version and exit")
 	flags := helpers.SetFlags()
 	helpers.SetLogger(flags.LogLevelVar)
 
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	switch {
+	case *versionFlag:
+		printVersion()
+		return
 	}
 
 	//custom file/folder names

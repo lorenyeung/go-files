@@ -14,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sirupsen/logrus"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 //TraceData trace data struct
@@ -168,7 +167,7 @@ func SetLogger(logLevelVar string) {
 	log.SetLevel(level)
 
 	log.SetReportCaller(true)
-	customFormatter := new(logrus.TextFormatter)
+	customFormatter := new(log.TextFormatter)
 	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
 	customFormatter.QuoteEmptyFields = true
 	customFormatter.FullTimestamp = true
@@ -178,7 +177,7 @@ func SetLogger(logLevelVar string) {
 		return fmt.Sprintf("%s\t", function), fmt.Sprintf(" %s:%d\t", repopath[len(repopath)-1], f.Line)
 	}
 
-	logrus.SetFormatter(customFormatter)
+	log.SetFormatter(customFormatter)
 	log.Info("Log level set at ", level)
 }
 

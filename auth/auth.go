@@ -10,14 +10,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"go-files/helpers"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/lorenyeung/go-files/helpers"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //Creds struct for creating download.json

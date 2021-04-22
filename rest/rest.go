@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"go-files/auth"
-	"go-files/helpers"
+	"github.com/lorenyeung/go-files/auth"
+	"github.com/lorenyeung/go-files/helpers"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 //GetFilesDetails get file details, sort by date and print
@@ -192,7 +192,7 @@ func DownloadFilesList(sorted helpers.TimeSlice, creds auth.Creds, flags helpers
 		log.Info("downloading ", words[key], " ", sorted[size-1].DownloadURI)
 		log.Debug("sorted:", sorted)
 		// do some naive file type detection here
-		readableFilesExtensions := []string{"txt", "pdf", "json", "yaml", "yml", "json", "xml"}
+		readableFilesExtensions := []string{"txt", "pdf", "json", "yaml", "yml", "json", "xml", "log"}
 		var readableFile bool
 		for i := range readableFilesExtensions {
 			if strings.HasSuffix(fileName, readableFilesExtensions[i]) {
