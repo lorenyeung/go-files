@@ -26,17 +26,16 @@ func printVersion() {
 func main() {
 	versionFlag := flag.Bool("v", false, "Print the current version and exit")
 	flags := helpers.SetFlags()
+	switch {
+	case *versionFlag:
+		printVersion()
+		return
+	}
 	helpers.SetLogger(flags.LogLevelVar)
 
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	switch {
-	case *versionFlag:
-		printVersion()
-		return
 	}
 
 	//custom file/folder names
@@ -118,6 +117,10 @@ func main() {
 	if flags.FolderVar == "" {
 		log.Error("Please enter a folder")
 		os.Exit(0)
+	}
+	if flags.RepoVar != "" {
+		log.Debug("Detected repo override:", flags.RepoVar)
+		creds.Repository = flags.RepoVar
 	}
 	sorted := rest.GetFilesDetails(creds.Username, creds.Apikey, creds.URL, creds.Repository, flags.FolderVar)
 

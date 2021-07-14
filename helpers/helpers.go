@@ -194,7 +194,7 @@ func Check(e error, panicCheck bool, logs string, trace TraceData) {
 
 //Flags struct
 type Flags struct {
-	LogLevelVar, FolderVar, DeleteVar, ManualReadmeVar                                  string
+	LogLevelVar, FolderVar, DeleteVar, ManualReadmeVar, RepoVar                         string
 	UnzipVar, ShowDownloadedFoldersVar, SkipDownloadedChecksumCheckVar, DeleteVerifyVar bool
 }
 
@@ -205,6 +205,7 @@ func SetFlags() Flags {
 	flag.StringVar(&flags.FolderVar, "folder", "", "Folder")
 	flag.StringVar(&flags.DeleteVar, "delete", "", "Timestamp to delete upto. Use in conjunction with -delv. Format is 2021-01-01T00:00:00-07:00")
 	flag.StringVar(&flags.ManualReadmeVar, "manualreadme", "", "Generate manual readme")
+	flag.StringVar(&flags.RepoVar, "repo", "", "Override")
 	flag.BoolVar(&flags.DeleteVerifyVar, "delv", false, "Output files to delete. Doesn't delete by default. Use in conjunction with -delete")
 	flag.BoolVar(&flags.UnzipVar, "unzip", false, "Try to unarchive downloaded files (beta)")
 	flag.BoolVar(&flags.ShowDownloadedFoldersVar, "show", false, "Show downloaded folders")
