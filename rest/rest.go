@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/lorenyeung/go-files/auth"
-	"github.com/lorenyeung/go-files/helpers"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -14,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lorenyeung/go-files/auth"
+	"github.com/lorenyeung/go-files/helpers"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -298,8 +299,8 @@ func ReadDetailsFile(readme, masterKey string) helpers.FolderDetailsJSON {
 	json.Unmarshal([]byte(byteValue), &resultData)
 	//TODO need to validate some of these fields
 	var data helpers.FolderDetailsJSON
-	data.Title = auth.Decrypt(resultData.Title, masterKey)
-	data.Description = auth.Decrypt(resultData.Description, masterKey)
+	data.Title, _ = auth.Decrypt(resultData.Title, masterKey)
+	data.Description, _ = auth.Decrypt(resultData.Description, masterKey)
 	data.LastModified = resultData.LastModified
 	//TODO need to account for file sha later
 	return data
