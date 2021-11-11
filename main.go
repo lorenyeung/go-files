@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"strings"
 	"time"
 
@@ -25,35 +24,29 @@ func printVersion() {
 
 func main() {
 	versionFlag := flag.Bool("v", false, "Print the current version and exit")
-	flags := helpers.SetFlags()
+	helpers.OrchestrateFlags = helpers.SetFlags()
 	switch {
 	case *versionFlag:
 		printVersion()
 		return
 	}
-	helpers.SetLogger(flags.LogLevelVar)
+	helpers.SetLogger(helpers.OrchestrateFlags.LogLevelVar)
 
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//custom file/folder names
-	configPath := usr.HomeDir + "/.lorenygo/downloader/"
 	readmeFileName := ".lorenyfolderReadme"
 
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	if _, err := os.Stat(helpers.OrchestrateFlags.HomeVar); os.IsNotExist(err) {
 		log.Info("No config folder")
-		err = os.MkdirAll(configPath, 0700)
+		err = os.MkdirAll(helpers.OrchestrateFlags.HomeVar, 0700)
 		helpers.Check(err, true, "Generating .downloader directory", helpers.Trace())
 	}
 
-	masterKey := auth.VerifyMasterKey(configPath + "master.key")
-	creds := auth.GetDownloadJSON(configPath+"download.json", masterKey)
+	masterKey := auth.VerifyMasterKey(helpers.OrchestrateFlags.HomeVar + "master.key")
+	creds := auth.GetDownloadJSON(helpers.OrchestrateFlags.HomeVar+"download.json", masterKey)
+	log.Debug("verifying API KEY, URL:", creds.URL, " username:", creds.Username)
 	if !auth.VerifyAPIKey(creds.URL, creds.Username, creds.Apikey) {
 		log.Warn("Looks like there's an issue with your credentials.")
-		auth.GenerateDownloadJSON(configPath+"download.json", true, masterKey)
-		creds = auth.GetDownloadJSON(configPath+"download.json", masterKey)
+		auth.GenerateDownloadJSON(helpers.OrchestrateFlags.HomeVar+"download.json", true, masterKey)
+		creds = auth.GetDownloadJSON(helpers.OrchestrateFlags.HomeVar+"download.json", masterKey)
 	}
 
 	//get ls of directory
@@ -69,13 +62,13 @@ func main() {
 		folders = folders[:len(folders)-1]
 	}
 
-	if flags.ManualReadmeVar != "" {
-		log.Info("Creating manual readme for:", creds.DlLocation+"/"+flags.ManualReadmeVar+"/"+readmeFileName)
-		rest.DetectDetailsFile(creds.DlLocation+"/"+flags.ManualReadmeVar+"/"+readmeFileName, masterKey)
+	if helpers.OrchestrateFlags.ManualReadmeVar != "" {
+		log.Info("Creating manual readme for:", creds.DlLocation+"/"+helpers.OrchestrateFlags.ManualReadmeVar+"/"+readmeFileName)
+		rest.DetectDetailsFile(creds.DlLocation+"/"+helpers.OrchestrateFlags.ManualReadmeVar+"/"+readmeFileName, masterKey)
 		os.Exit(0)
 	}
 
-	if flags.ShowDownloadedFoldersVar {
+	if helpers.OrchestrateFlags.ShowDownloadedFoldersVar {
 		log.Info("Showing downloaded Folders")
 
 		for i := 0; i < len(folders); i++ {
@@ -84,12 +77,12 @@ func main() {
 		}
 		os.Exit(0)
 	}
-	if flags.DeleteVar != "" {
-		deletetil, err := time.Parse(time.RFC3339, flags.DeleteVar)
+	if helpers.OrchestrateFlags.DeleteVar != "" {
+		deletetil, err := time.Parse(time.RFC3339, helpers.OrchestrateFlags.DeleteVar)
 		helpers.Check(err, true, "Parse delete time failed", helpers.Trace())
 		log.Info("Deleting up to:", deletetil)
 
-		if !flags.DeleteVerifyVar {
+		if !helpers.OrchestrateFlags.DeleteVerifyVar {
 			log.Info("Just checking files for deletion, will not delete. To delete, add -delv")
 		}
 
@@ -97,7 +90,7 @@ func main() {
 			data := showReadmeData(folders, i, creds, readmeFileName, masterKey)
 			shouldDelete := data.LastModified.Before(deletetil)
 
-			if !flags.DeleteVerifyVar {
+			if !helpers.OrchestrateFlags.DeleteVerifyVar {
 				fmt.Println(folders[i], "delete:", shouldDelete, "\tLast update: ", data.LastModified, " Title: "+data.Title+" - "+data.Description)
 
 			} else {
@@ -114,17 +107,17 @@ func main() {
 		os.Exit(0)
 	}
 	//var download = flags.FolderVar
-	if flags.FolderVar == "" {
+	if helpers.OrchestrateFlags.FolderVar == "" {
 		log.Error("Please enter a folder")
 		os.Exit(0)
 	}
-	if flags.RepoVar != "" {
-		log.Debug("Detected repo override:", flags.RepoVar)
-		creds.Repository = flags.RepoVar
+	if helpers.OrchestrateFlags.RepoVar != "" {
+		log.Debug("Detected repo override:", helpers.OrchestrateFlags.RepoVar)
+		creds.Repository = helpers.OrchestrateFlags.RepoVar
 	}
-	sorted := rest.GetFilesDetails(creds.Username, creds.Apikey, creds.URL, creds.Repository, flags.FolderVar)
+	sorted := rest.GetFilesDetails(creds.Username, creds.Apikey, creds.URL, creds.Repository, helpers.OrchestrateFlags.FolderVar)
 
-	rest.DownloadFilesList(sorted, creds, flags, masterKey, readmeFileName)
+	rest.DownloadFilesList(sorted, creds, helpers.OrchestrateFlags, masterKey, readmeFileName)
 
 }
 

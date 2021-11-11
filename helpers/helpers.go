@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -16,6 +17,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 )
+
+var OrchestrateFlags Flags
 
 //TraceData trace data struct
 type TraceData struct {
@@ -194,15 +197,25 @@ func Check(e error, panicCheck bool, logs string, trace TraceData) {
 
 //Flags struct
 type Flags struct {
-	LogLevelVar, FolderVar, DeleteVar, ManualReadmeVar, RepoVar                         string
+	LogLevelVar, FolderVar, DeleteVar, ManualReadmeVar, RepoVar, HomeVar                string
 	UnzipVar, ShowDownloadedFoldersVar, SkipDownloadedChecksumCheckVar, DeleteVerifyVar bool
 }
 
 //SetFlags function
 func SetFlags() Flags {
+
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//custom file/folder names
+	configPath := usr.HomeDir + "/.lorenygo/downloader/"
+
 	var flags Flags
 	flag.StringVar(&flags.LogLevelVar, "log", "INFO", "Order of Severity: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC")
 	flag.StringVar(&flags.FolderVar, "folder", "", "Folder")
+	flag.StringVar(&flags.HomeVar, "home", configPath, "Home directory")
 	flag.StringVar(&flags.DeleteVar, "delete", "", "Timestamp to delete upto. Use in conjunction with -delv. Format is 2021-01-01T00:00:00-07:00")
 	flag.StringVar(&flags.ManualReadmeVar, "manualreadme", "", "Generate manual readme")
 	flag.StringVar(&flags.RepoVar, "repo", "", "Override")

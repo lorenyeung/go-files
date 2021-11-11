@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/lorenyeung/go-files/helpers"
@@ -34,6 +35,7 @@ type Creds struct {
 func VerifyAPIKey(urlInput, userName, apiKey string) bool {
 	log.Printf("starting VerifyAPIkey request. Testing: %s\n", userName)
 	// username password validation
+
 	data, _ := GetRestAPI(urlInput+"/api/system/ping", userName, apiKey, "", "")
 	if string(data) == "OK" {
 		log.Printf("finished VerifyAPIkey request. Credentials are good to go.")
@@ -53,11 +55,22 @@ func GenerateDownloadJSON(configPath string, regen bool, masterKey string) Creds
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("Enter your url [%s]: ", creds.URL)
 	for {
+		//strip for URL safe characters
+		reg, err := regexp.Compile("[^a-zA-Z0-9:/.%]+")
+		if err != nil {
+			log.Fatal(err)
+		}
 		urlInput, _ = reader.ReadString('\n')
+
 		urlInput = strings.TrimSuffix(urlInput, "\n")
+		urlInput = strings.TrimSuffix(urlInput, "/")
 		if urlInput == "" {
+			log.Debug("url input is empty")
 			urlInput = creds.URL
 		}
+		urlInput = reg.ReplaceAllString(urlInput, "")
+		log.Debug("stripping url to final string:", urlInput)
+
 		fmt.Printf("Enter your username (leave blank for token) [%s]: ", creds.Username)
 		userName, _ = reader.ReadString('\n')
 		userName = strings.TrimSuffix(userName, "\n")
@@ -68,12 +81,14 @@ func GenerateDownloadJSON(configPath string, regen bool, masterKey string) Creds
 		apiKey, _ = reader.ReadString('\n')
 		apiKey = strings.TrimSuffix(apiKey, "\n")
 
+		log.Error("URL:", urlInput)
 		if VerifyAPIKey(urlInput, userName, apiKey) {
 			break
 		} else {
 			fmt.Print("Something seems wrong, please try again. Enter your url: ")
 		}
 	}
+	log.Error("URL 2:", urlInput)
 	//TODO need to check if directory exists and/or valid directory. trim trailing /
 	fmt.Printf("Enter your Download location [%s]: ", creds.DlLocation)
 	dlLocationInput, _ := reader.ReadString('\n')
@@ -93,6 +108,7 @@ func GenerateDownloadJSON(configPath string, regen bool, masterKey string) Creds
 }
 
 func writeFileDownloadJSON(configPath, urlInput, userName, apiKey, dlLocationInput, repoInput, masterKey string) Creds {
+	log.Debug("before first write:", urlInput)
 	data := Creds{
 		URL:        Encrypt(urlInput, masterKey),
 		Username:   Encrypt(userName, masterKey),
@@ -101,7 +117,7 @@ func writeFileDownloadJSON(configPath, urlInput, userName, apiKey, dlLocationInp
 		Repository: Encrypt(repoInput, masterKey),
 	}
 	//should probably encrypt data here
-	fileData, err := json.Marshal(data)
+	fileData, err := json.MarshalIndent(data, "", "    ")
 	helpers.Check(err, true, "The JSON marshal", helpers.Trace())
 	err2 := ioutil.WriteFile(configPath, fileData, 0600)
 	helpers.Check(err2, true, "The JSON write", helpers.Trace())
@@ -117,10 +133,18 @@ func writeFileDownloadJSON(configPath, urlInput, userName, apiKey, dlLocationInp
 	return data2
 }
 
+func overwritePropertiesJSON(cred Creds, filePath string) {
+	fileData, err := json.MarshalIndent(cred, "", "    ")
+	helpers.Check(err, true, "The JSON marshal", helpers.Trace())
+	err2 := ioutil.WriteFile(filePath, fileData, 0600)
+	helpers.Check(err2, true, "The JSON write", helpers.Trace())
+}
+
 //GetDownloadJSON get data from DownloadJSON
 func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 	var result map[string]interface{}
 	var resultData Creds
+	toEncrypt := resultData
 	file, err := os.Open(fileLocation)
 	if err != nil {
 		log.Print("error:", err)
@@ -130,12 +154,71 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 		defer file.Close()
 		byteValue, _ := ioutil.ReadAll(file)
 		json.Unmarshal([]byte(byteValue), &result)
+
+		toEncrypt.Apikey = result["Apikey"].(string)
+		toEncrypt.DlLocation = result["DlLocation"].(string)
+		toEncrypt.Repository = result["Repository"].(string)
+		toEncrypt.URL = result["URL"].(string)
+		toEncrypt.Username = result["Username"].(string)
+
+		var modified bool
 		//TODO need to validate some of these fields
-		resultData.URL = Decrypt(result["URL"].(string), masterKey)
-		resultData.Username = Decrypt(result["Username"].(string), masterKey)
-		resultData.Apikey = Decrypt(result["Apikey"].(string), masterKey)
-		resultData.DlLocation = Decrypt(result["DlLocation"].(string), masterKey)
-		resultData.Repository = Decrypt(result["Repository"].(string), masterKey)
+		decUrl, err := Decrypt(result["URL"].(string), masterKey)
+		log.Debug(decUrl)
+		if err != nil {
+			modified = true
+			log.Warn("re-encrypting url")
+			toEncrypt.URL = Encrypt(result["URL"].(string), masterKey)
+			resultData.URL = result["URL"].(string)
+		} else {
+			resultData.URL = decUrl
+		}
+
+		decUser, err := Decrypt(result["Username"].(string), masterKey)
+		if err != nil {
+			modified = true
+			log.Warn("re-encrypting username")
+			toEncrypt.Username = Encrypt(result["Username"].(string), masterKey)
+			resultData.Username = result["Username"].(string)
+		} else {
+			resultData.Username = decUser
+		}
+
+		decApikey, err := Decrypt(result["Apikey"].(string), masterKey)
+		if err != nil {
+			modified = true
+			log.Warn("re-encrypting Apikey")
+			toEncrypt.Apikey = Encrypt(result["Apikey"].(string), masterKey)
+			resultData.Apikey = result["Apikey"].(string)
+		} else {
+			resultData.Apikey = decApikey
+		}
+
+		decDllocation, err := Decrypt(result["DlLocation"].(string), masterKey)
+		if err != nil {
+			modified = true
+			log.Warn("re-encrypting DlLocation")
+			toEncrypt.DlLocation = Encrypt(result["DlLocation"].(string), masterKey)
+			resultData.DlLocation = result["DlLocation"].(string)
+		} else {
+			resultData.DlLocation = decDllocation
+		}
+
+		decRepo, err := Decrypt(result["Repository"].(string), masterKey)
+		if err != nil {
+			modified = true
+			log.Warn("re-encrypting Repository")
+			toEncrypt.Repository = Encrypt(result["Repository"].(string), masterKey)
+			resultData.Repository = result["Repository"].(string)
+		} else {
+			resultData.Repository = decRepo
+		}
+
+		if modified {
+			log.Debug("writing new file to:", helpers.OrchestrateFlags.HomeVar+"download.json")
+			overwritePropertiesJSON(toEncrypt, helpers.OrchestrateFlags.HomeVar+"download.json")
+		}
+		return resultData
 	}
 	return resultData
 }
@@ -210,33 +293,71 @@ func CreateHash(key string) string {
 }
 
 //Encrypt self explanatory
-func Encrypt(dataString string, passphrase string) string {
-	data := []byte(dataString)
-	block, _ := aes.NewCipher([]byte(CreateHash(passphrase)))
-	gcm, err := cipher.NewGCM(block)
-	helpers.Check(err, true, "Cipher", helpers.Trace())
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		panic(err.Error())
+func Encrypt(stringToEncrypt string, keyString string) string {
+	//Since the key is in string, we need to convert decode it to bytes
+	key, err := hex.DecodeString(keyString)
+	if err != nil {
+		log.Warn(err)
 	}
-	ciphertext := gcm.Seal(nonce, nonce, data, nil)
-	return base64.RawURLEncoding.EncodeToString([]byte(ciphertext))
+	plaintext := []byte(stringToEncrypt)
+
+	//Create a new Cipher Block from the key
+	block, err := aes.NewCipher(key)
+	helpers.Check(err, true, "new Cipher", helpers.Trace())
+
+	//Create a new GCM - https://en.wikipedia.org/wiki/Galois/Counter_Mode
+	//https://golang.org/pkg/crypto/cipher/#NewGCM
+	aesGCM, err := cipher.NewGCM(block)
+	helpers.Check(err, true, "new GCM", helpers.Trace())
+
+	//Create a nonce. Nonce should be from GCM
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		helpers.Check(err, true, "new nonce", helpers.Trace())
+	}
+
+	//Encrypt the data using aesGCM.Seal
+	//Since we don't want to save the nonce somewhere else in this case, we add it as a prefix to the encrypted data. The first nonce argument in Seal is the prefix.
+	ciphertext := aesGCM.Seal(nonce, nonce, plaintext, nil)
+	return fmt.Sprintf("%x", ciphertext)
 }
 
 //Decrypt self explanatory
-func Decrypt(dataString string, passphrase string) string {
-	data, _ := base64.RawURLEncoding.DecodeString(dataString)
+func Decrypt(encryptedString string, keyString string) (string, error) {
+	key, err := hex.DecodeString(keyString)
+	if err != nil {
+		log.Warn(err)
+	}
+	enc, err := hex.DecodeString(encryptedString)
+	if err != nil {
+		log.Warn(err, " string is not decode-able and likely is decrypted")
+		//try to reencrypt
+		return "", err
+	}
 
-	key := []byte(CreateHash(passphrase))
+	//Create a new Cipher Block from the key
 	block, err := aes.NewCipher(key)
-	helpers.Check(err, true, "Cipher", helpers.Trace())
-	gcm, err := cipher.NewGCM(block)
-	helpers.Check(err, true, "Cipher GCM", helpers.Trace())
-	nonceSize := gcm.NonceSize()
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	helpers.Check(err, true, "GCM open", helpers.Trace())
-	return string(plaintext)
+	helpers.Check(err, true, "new Cipher", helpers.Trace())
+
+	//Create a new GCM
+	aesGCM, err := cipher.NewGCM(block)
+	helpers.Check(err, true, "new GCM", helpers.Trace())
+
+	//Get the nonce size
+	nonceSize := aesGCM.NonceSize()
+
+	//Extract the nonce from the encrypted data. If the key is too short it will fail here with an ugly panic. If the field is empty it'll also panic.
+	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
+
+	//Decrypt the data
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		log.Warn(err, " string is not decryptable and likely is decrypted")
+		//try to reencrypt
+		return "", err
+	}
+
+	return fmt.Sprintf("%s", plaintext), nil
 }
 
 //VerifyMasterKey self explanatory
@@ -244,19 +365,28 @@ func VerifyMasterKey(configPath string) string {
 	_, err := os.Open(configPath)
 	var token string
 	if err != nil {
-		log.Warn("Finding master key failed with error %s\n", err)
-		data, err := generateRandomBytes(32)
+		log.Warn("Finding master key failed with error:", err)
+		data, err := RandomHex(32)
 		helpers.Check(err, true, "Generating new master key", helpers.Trace())
-		err2 := ioutil.WriteFile(configPath, []byte(base64.URLEncoding.EncodeToString(data)), 0600)
+		err2 := ioutil.WriteFile(configPath, []byte(data), 0600)
 		helpers.Check(err2, true, "Master key write", helpers.Trace())
 		log.Info("Successfully generated master key")
-		token = base64.URLEncoding.EncodeToString(data)
+		//token = base64.URLEncoding.EncodeToString([]byte(data))
+		token = data
 	} else {
 		dat, err := ioutil.ReadFile(configPath)
 		helpers.Check(err, true, "Reading master key", helpers.Trace())
 		token = string(dat)
 	}
 	return token
+}
+
+func RandomHex(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 func generateRandomString(s int) (string, error) {
