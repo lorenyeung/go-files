@@ -163,7 +163,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 
 		var modified bool
 		//TODO need to validate some of these fields
-		decUrl, err := Decrypt(result["URL"].(string), masterKey)
+		decUrl, err := Decrypt(result["URL"].(string), masterKey, false)
 		log.Debug(decUrl)
 		if err != nil {
 			modified = true
@@ -174,7 +174,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 			resultData.URL = decUrl
 		}
 
-		decUser, err := Decrypt(result["Username"].(string), masterKey)
+		decUser, err := Decrypt(result["Username"].(string), masterKey, false)
 		if err != nil {
 			modified = true
 			log.Warn("re-encrypting username")
@@ -184,7 +184,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 			resultData.Username = decUser
 		}
 
-		decApikey, err := Decrypt(result["Apikey"].(string), masterKey)
+		decApikey, err := Decrypt(result["Apikey"].(string), masterKey, false)
 		if err != nil {
 			modified = true
 			log.Warn("re-encrypting Apikey")
@@ -194,7 +194,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 			resultData.Apikey = decApikey
 		}
 
-		decDllocation, err := Decrypt(result["DlLocation"].(string), masterKey)
+		decDllocation, err := Decrypt(result["DlLocation"].(string), masterKey, false)
 		if err != nil {
 			modified = true
 			log.Warn("re-encrypting DlLocation")
@@ -204,7 +204,7 @@ func GetDownloadJSON(fileLocation string, masterKey string) Creds {
 			resultData.DlLocation = decDllocation
 		}
 
-		decRepo, err := Decrypt(result["Repository"].(string), masterKey)
+		decRepo, err := Decrypt(result["Repository"].(string), masterKey, false)
 		if err != nil {
 			modified = true
 			log.Warn("re-encrypting Repository")
@@ -323,14 +323,16 @@ func Encrypt(stringToEncrypt string, keyString string) string {
 }
 
 //Decrypt self explanatory
-func Decrypt(encryptedString string, keyString string) (string, error) {
+func Decrypt(encryptedString string, keyString string, hideLog bool) (string, error) {
 	key, err := hex.DecodeString(keyString)
 	if err != nil {
 		log.Warn(err)
 	}
 	enc, err := hex.DecodeString(encryptedString)
 	if err != nil {
-		log.Warn(err, " string is not decode-able and likely is decrypted")
+		if !hideLog {
+			log.Warn(err, " string is not decode-able and likely is decrypted")
+		}
 		//try to reencrypt
 		return "", err
 	}
@@ -352,7 +354,9 @@ func Decrypt(encryptedString string, keyString string) (string, error) {
 	//Decrypt the data
 	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		log.Warn(err, " string is not decryptable and likely is decrypted")
+		if !hideLog {
+			log.Warn(err, " string is not decryptable and likely is decrypted")
+		}
 		//try to reencrypt
 		return "", err
 	}

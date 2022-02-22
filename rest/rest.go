@@ -299,8 +299,16 @@ func ReadDetailsFile(readme, masterKey string) helpers.FolderDetailsJSON {
 	json.Unmarshal([]byte(byteValue), &resultData)
 	//TODO need to validate some of these fields
 	var data helpers.FolderDetailsJSON
-	data.Title, _ = auth.Decrypt(resultData.Title, masterKey)
-	data.Description, _ = auth.Decrypt(resultData.Description, masterKey)
+	data.Title, err = auth.Decrypt(resultData.Title, masterKey, true)
+	if err != nil {
+		//could not decrypt
+		data.Title = "Could not decrypt"
+	}
+	data.Description, err = auth.Decrypt(resultData.Description, masterKey, true)
+	if err != nil {
+		//could not decrypt
+		data.Description = "Could not decrypt - need to be regenerated"
+	}
 	data.LastModified = resultData.LastModified
 	//TODO need to account for file sha later
 	return data
